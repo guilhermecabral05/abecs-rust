@@ -1,0 +1,18 @@
+[package]
+name = "pinpad"
+version = "0.1.0"
+edition = "2021"
+authors = ["Hiroshi"]
+description = "Biblioteca para comunicação com Pinpad via Protocolo ABECS 2.12"
+license = "MIT"
+
+[lib]
+name = "pinpad"
+path = "src/lib.rs"
+
+[[bin]]
+name = "pinpad-example"
+path = "src/main.rs"
+
+[dependencies]
+serialport = "4.3"
