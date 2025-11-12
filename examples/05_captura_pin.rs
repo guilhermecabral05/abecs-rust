@@ -75,10 +75,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("💡 Este PIN block deve ser enviado para a adquirente");
             println!("   para validação junto ao banco emissor.\n");
         }
+        Err(pinpad::AbecsError::UserCancelled) => {
+            println!("❌ Operação cancelada pelo usuário (botão vermelho)\n");
+            // Fechar sessão antes de sair
+            let cmd = AbecsCommand::Close::new();
+            let _ = pinpad.execute_typed(&cmd);
+            return Ok(());
+        }
         Err(e) => {
             println!("❌ Erro ou timeout: {}", e);
             println!("   Possíveis causas:");
-            println!("   - Usuário cancelou");
             println!("   - Timeout expirado");
             println!("   - Chaves não configuradas");
             println!("   - Erro de comunicação\n");

@@ -164,6 +164,11 @@ impl PinpadConnection {
 
         // Verifica o status antes de desserializar
         if !raw_response.is_success() {
+            // Status 013 = Operação cancelada pelo usuário
+            if raw_response.status() == "013" {
+                return Err(AbecsError::UserCancelled);
+            }
+
             return Err(AbecsError::PinpadError {
                 status: raw_response.status().to_string(),
                 description: raw_response.status_description().to_string(),

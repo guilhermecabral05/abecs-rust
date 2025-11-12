@@ -39,10 +39,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // SPE_MSGIDX = 0x0021 (DIGITE QUANTIDADE)
     let cmd = AbecsCommand::GetData::new(
-        0x0021,  // Índice da mensagem pré-definida
-        1,       // Mínimo de caracteres
-        10,      // Máximo de caracteres
-        60,      // Timeout em segundos
+        0x0021, // Índice da mensagem pré-definida
+        1,      // Mínimo de caracteres
+        10,     // Máximo de caracteres
+        60,     // Timeout em segundos
     );
 
     match pinpad.execute_typed(&cmd) {
@@ -53,6 +53,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if let Ok(valor) = response.data.parse::<u64>() {
                 println!("   💰 Quantidade: {}\n", valor);
             }
+        }
+        Err(pinpad::AbecsError::UserCancelled) => {
+            println!("❌ Operação cancelada pelo usuário (botão vermelho)\n");
+            // Fechar sessão antes de sair
+            let cmd = AbecsCommand::Close::new();
+            let _ = pinpad.execute_typed(&cmd);
+            return Ok(());
         }
         Err(e) => {
             println!("❌ Erro ou timeout: {}\n", e);
@@ -70,15 +77,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // SPE_MSGIDX = 0x000C (DIGITE CÓDIGO DE SEGURANÇA)
     let cmd = AbecsCommand::GetData::new(
-        0x000C,  // DIGITE CÓDIGO DE SEGURANÇA
-        3,       // Mínimo 3 dígitos
-        4,       // Máximo 4 dígitos
+        0x000C, // DIGITE CÓDIGO DE SEGURANÇA
+        3,      // Mínimo 3 dígitos
+        4,      // Máximo 4 dígitos
         30,
     );
 
     match pinpad.execute_typed(&cmd) {
         Ok(response) => {
             println!("✅ Código: {}\n", response.data);
+        }
+        Err(pinpad::AbecsError::UserCancelled) => {
+            println!("❌ Operação cancelada pelo usuário (botão vermelho)\n");
         }
         Err(e) => {
             println!("❌ Erro ou timeout: {}\n", e);
@@ -96,10 +106,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // SPE_MSGIDX = 0x0007 (DIGITE O CPF)
     let cmd = AbecsCommand::GetData::new(
-        0x0007,  // DIGITE O CPF
-        11,      // CPF tem 11 dígitos
-        11,
-        45,
+        0x0007, // DIGITE O CPF
+        11,     // CPF tem 11 dígitos
+        11, 45,
     );
 
     match pinpad.execute_typed(&cmd) {
@@ -118,6 +127,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             } else {
                 println!("✅ Dados: {}\n", cpf);
             }
+        }
+        Err(pinpad::AbecsError::UserCancelled) => {
+            println!("❌ Operação cancelada pelo usuário (botão vermelho)\n");
         }
         Err(e) => {
             println!("❌ Erro ou timeout: {}\n", e);

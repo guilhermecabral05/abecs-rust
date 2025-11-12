@@ -75,9 +75,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("✅ Selecionado: {}\n", opcao);
             opcao.clone()
         }
-        Err(e) => {
-            println!("❌ Erro ou cancelado: {}\n", e);
+        Err(pinpad::AbecsError::UserCancelled) => {
+            println!("❌ Operação cancelada pelo usuário (botão vermelho)\n");
             let cmd = AbecsCommand::Display::new("032  CANCELADO      ");
+            pinpad.execute_typed(&cmd)?;
+            std::thread::sleep(std::time::Duration::from_secs(2));
+            let cmd = AbecsCommand::Close::new();
+            pinpad.execute_typed(&cmd)?;
+            return Ok(());
+        }
+        Err(e) => {
+            println!("❌ Erro: {}\n", e);
+            let cmd = AbecsCommand::Display::new("032     ERRO        ");
             pinpad.execute_typed(&cmd)?;
             std::thread::sleep(std::time::Duration::from_secs(2));
             let cmd = AbecsCommand::Close::new();
@@ -118,6 +127,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             Ok(response) => {
                 println!("✅ PIN capturado!");
                 println!("   PIN Block: {} bytes\n", response.pin_block.len());
+            }
+            Err(pinpad::AbecsError::UserCancelled) => {
+                println!("❌ Operação cancelada pelo usuário (botão vermelho)\n");
+                let cmd = AbecsCommand::Display::new("032  CANCELADO      ");
+                pinpad.execute_typed(&cmd)?;
+                std::thread::sleep(std::time::Duration::from_secs(2));
+                let cmd = AbecsCommand::Close::new();
+                pinpad.execute_typed(&cmd)?;
+                return Ok(());
             }
             Err(e) => {
                 println!("❌ Erro na captura: {}\n", e);

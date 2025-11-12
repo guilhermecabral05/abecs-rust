@@ -19,6 +19,9 @@ pub enum AbecsError {
     /// Comando inválido
     InvalidCommand(String),
 
+    /// Operação cancelada pelo usuário (botão vermelho pressionado)
+    UserCancelled,
+
     /// Erro retornado pelo Pinpad (status != 000)
     PinpadError { status: String, description: String },
 }
@@ -32,6 +35,7 @@ impl std::fmt::Display for AbecsError {
             AbecsError::NakReceived(msg) => write!(f, "NAK recebido: {}", msg),
             AbecsError::InvalidResponse(msg) => write!(f, "Resposta inválida: {}", msg),
             AbecsError::InvalidCommand(msg) => write!(f, "Comando inválido: {}", msg),
+            AbecsError::UserCancelled => write!(f, "Operação cancelada pelo usuário"),
             AbecsError::PinpadError {
                 status,
                 description,

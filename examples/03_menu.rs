@@ -49,8 +49,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     match pinpad.execute_typed(&cmd) {
         Ok(response) => {
-            println!("✅ Opção selecionada: {}", response.selected_index);
+            println!("✅ Opção selecionada: {}", response.selected_index + 1);
             println!("   {}\n", options[response.selected_index as usize]);
+        }
+        Err(pinpad::AbecsError::UserCancelled) => {
+            println!("❌ Operação cancelada pelo usuário (botão vermelho)\n");
+            // Fechar sessão antes de sair
+            let cmd = AbecsCommand::Close::new();
+            let _ = pinpad.execute_typed(&cmd);
+            return Ok(());
         }
         Err(e) => {
             println!("❌ Erro ou timeout: {}\n", e);
@@ -80,6 +87,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             } else {
                 println!("   ✗ Transação cancelada!");
             }
+        }
+        Err(pinpad::AbecsError::UserCancelled) => {
+            println!("❌ Operação cancelada pelo usuário (botão vermelho)\n");
         }
         Err(e) => {
             println!("❌ Erro ou timeout: {}\n", e);
