@@ -96,20 +96,88 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     // ═══════════════════════════════════════════════════════════
-    // ETAPA 3: Inserir/Passar cartão (simulado)
+    // ETAPA 3: Leitura do Cartão (REAL)
     // ═══════════════════════════════════════════════════════════
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     println!("ETAPA 3: Leitura do Cartão");
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
 
-    let cmd = AbecsCommand::Display::new("032 INSIRA O CARTAO ");
-    pinpad.execute_typed(&cmd)?;
+    println!("📱 Aguardando cartão no Pinpad...");
+    println!("   Insira, passe ou aproxime o cartão\n");
 
-    println!("📱 Aguardando cartão...");
-    std::thread::sleep(std::time::Duration::from_secs(2));
+    // Obter data e hora atuais (formato simples para exemplo)
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    
+    // Conversão aproximada para data local (para exemplo - em produção use biblioteca de data/hora)
+    let dias_desde_1970 = now / 86400;
+    let ano = ((1970 + (dias_desde_1970 / 365)) % 100) as u32; // últimos 2 dígitos
+    let mes = (((dias_desde_1970 % 365) / 30) + 1) as u32;
+    let dia = (((dias_desde_1970 % 365) % 30) + 1) as u32;
+    
+    let horas = ((now % 86400) / 3600) as u32;
+    let minutos = ((now % 3600) / 60) as u32;
+    let segundos = (now % 60) as u32;
+    
+    let date = format!("{:02}{:02}{:02}", ano, mes, dia);    // AAMMDD
+    let time = format!("{:02}{:02}{:02}", horas, minutos, segundos); // HHMMSS
 
-    println!("✅ Cartão detectado!");
-    println!("   PAN: ****{}\n", &pan[12..]);
+    let cmd = AbecsCommand::GetCard::new(
+        valor,  // Valor em centavos
+        date,   // Data AAMMDD
+        time,   // Hora HHMMSS
+        60,     // Timeout 60 segundos
+    );
+
+    let card_response = match pinpad.execute_typed(&cmd) {
+        Ok(response) => {
+            let tipo_cartao = match response.card_type.as_str() {
+                "00" => "Magnético",
+                "03" => "ICC EMV (Chip)",
+                "05" => "CTLS (Aproximação - Tarja)",
+                "06" => "CTLS EMV (Aproximação - Chip)",
+                _ => "Desconhecido",
+            };
+            println!("✅ Cartão detectado: {}", tipo_cartao);
+            
+            if let Some(ref pan_read) = response.pan {
+                let pan_mask = if pan_read.len() >= 4 {
+                    format!("****{}", &pan_read[pan_read.len()-4..])
+                } else {
+                    pan_read.clone()
+                };
+                println!("   PAN: {}\n", pan_mask);
+            } else {
+                println!();
+            }
+            
+            response
+        }
+        Err(pinpad::AbecsError::UserCancelled) => {
+            println!("❌ Operação cancelada pelo usuário (botão vermelho)\n");
+            let cmd = AbecsCommand::Display::new("032  CANCELADO      ");
+            pinpad.execute_typed(&cmd)?;
+            std::thread::sleep(std::time::Duration::from_secs(2));
+            let cmd = AbecsCommand::Close::new();
+            pinpad.execute_typed(&cmd)?;
+            return Ok(());
+        }
+        Err(e) => {
+            println!("❌ Erro na leitura: {}\n", e);
+            let cmd = AbecsCommand::Display::new("032  ERRO CARTAO    ");
+            pinpad.execute_typed(&cmd)?;
+            std::thread::sleep(std::time::Duration::from_secs(2));
+            let cmd = AbecsCommand::Close::new();
+            pinpad.execute_typed(&cmd)?;
+            return Ok(());
+        }
+    };
+
+    // Extrair PAN para uso no PIN
+    let pan_for_pin = card_response.pan.unwrap_or_else(|| pan.to_string());
 
     // ═══════════════════════════════════════════════════════════
     // ETAPA 4: Capturar PIN (se débito ou crédito com senha)
@@ -121,7 +189,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         println!("🔐 Aguardando senha no Pinpad...");
 
-        let cmd = AbecsCommand::GetPin::new("DIGITE A SENHA", 4, 12, 30, "01", pan);
+        let cmd = AbecsCommand::GetPin::new(
+            "DIGITE A SENHA",  // Mensagem
+            4,                  // Mínimo
+            12,                 // Máximo
+            "2",                // Método DUKPT:DES
+            "00",               // Índice chave
+            "",                 // WK (ignorado)
+            &pan_for_pin,       // PAN do cartão lido
+        );
 
         match pinpad.execute_typed(&cmd) {
             Ok(response) => {

@@ -28,6 +28,16 @@ pub struct GetDataResponse {
     pub data: String,
 }
 
+/// Resposta do comando GetCard (GCX)
+#[derive(Debug, Clone)]
+pub struct GetCardResponse {
+    pub card_type: String, // "00"=Magnético, "03"=ICC EMV, "05"=CTLS tarja, "06"=CTLS EMV
+    pub pan: Option<String>, // PAN do cartão (se disponível)
+    pub track1: Option<String>, // Trilha 1 (incompleta)
+    pub track2: Option<String>, // Trilha 2 (incompleta)
+    pub track3: Option<String>, // Trilha 3 (incompleta)
+}
+
 /// Resposta do comando Menu
 #[derive(Debug, Clone)]
 pub struct MenuResponse {
@@ -193,9 +203,10 @@ pub mod AbecsCommand {
         pub message: String,
         pub min_length: u8,
         pub max_length: u8,
-        pub timeout: u16,
-        pub crypto_type: String,
-        pub additional_data: String,
+        pub method: String, // "0"=MK/WK:DES, "1"=MK/WK:TDES, "2"=DUKPT:DES, "3"=DUKPT:TDES
+        pub key_index: String, // Índice da MK ou DUKPT (2 dígitos)
+        pub working_key: String, // Working Key criptografada (32 hex chars, ignorado se DUKPT)
+        pub pan: String,    // PAN do cartão
     }
 
     impl GetPin {
@@ -203,17 +214,19 @@ pub mod AbecsCommand {
             message: impl Into<String>,
             min_length: u8,
             max_length: u8,
-            timeout: u16,
-            crypto_type: impl Into<String>,
-            additional_data: impl Into<String>,
+            method: impl Into<String>,
+            key_index: impl Into<String>,
+            working_key: impl Into<String>,
+            pan: impl Into<String>,
         ) -> Self {
             Self {
                 message: message.into(),
                 min_length,
                 max_length,
-                timeout,
-                crypto_type: crypto_type.into(),
-                additional_data: additional_data.into(),
+                method: method.into(),
+                key_index: key_index.into(),
+                working_key: working_key.into(),
+                pan: pan.into(),
             }
         }
     }
@@ -226,14 +239,43 @@ pub mod AbecsCommand {
         }
 
         fn serialize_params(&self) -> Vec<Vec<u8>> {
-            vec![
-                self.message.serialize_abecs(),
-                vec![self.min_length],
-                vec![self.max_length],
-                format!("{:04}", self.timeout).serialize_abecs(),
-                self.crypto_type.serialize_abecs(),
-                self.additional_data.serialize_abecs(),
-            ]
+            // Formato do GPN segundo protocolo ABECS 2.12
+            let mut params = Vec::new();
+
+            // GPN_METHOD (1 byte)
+            params.push(self.method.as_bytes().to_vec());
+
+            // GPN_KEYIDX (2 bytes)
+            params.push(format!("{:02}", self.key_index).as_bytes().to_vec());
+
+            // GPN_WKENC (32 bytes hex) - preenchido com zeros se DUKPT
+            let wk = if self.working_key.is_empty() {
+                "00000000000000000000000000000000".to_string()
+            } else {
+                format!("{:0<32}", self.working_key)
+            };
+            params.push(wk.as_bytes().to_vec());
+
+            // GPN_PANLEN (2 bytes)
+            let pan_len = self.pan.len().min(19);
+            params.push(format!("{:02}", pan_len).as_bytes().to_vec());
+
+            // GPN_PAN (19 bytes, alinhado à esquerda com espaços)
+            params.push(format!("{:<19}", self.pan).as_bytes().to_vec());
+
+            // GPN_ENTRIES (1 byte) - fixo "1"
+            params.push(b"1".to_vec());
+
+            // GPN_MIN1 (2 bytes)
+            params.push(format!("{:02}", self.min_length).as_bytes().to_vec());
+
+            // GPN_MAX1 (2 bytes)
+            params.push(format!("{:02}", self.max_length).as_bytes().to_vec());
+
+            // GPN_MSG1 (32 bytes)
+            params.push(format!("{:<32}", self.message).as_bytes().to_vec());
+
+            params
         }
 
         fn is_blocking(&self) -> bool {
@@ -297,6 +339,83 @@ pub mod AbecsCommand {
             // SPE_TIMEOUT (0x000C) - 1 byte (opcional)
             if self.timeout > 0 {
                 all_params.extend_from_slice(&abecs_param(0x000C, &[self.timeout as u8]));
+            }
+
+            // Retorna como um único bloco
+            vec![all_params]
+        }
+
+        fn is_blocking(&self) -> bool {
+            true
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // GetCard - Obter Cartão (GCX - Get Card Extended)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    #[derive(Debug, Clone)]
+    pub struct GetCard {
+        pub amount: u64,             // Valor em centavos
+        pub date: String,            // Data AAMMDD (ano 2 dígitos)
+        pub time: String,            // Hora HHMMSS
+        pub timeout: u16,            // Timeout em segundos
+        pub message: Option<String>, // Mensagem customizada (opcional)
+    }
+
+    impl GetCard {
+        pub fn new(
+            amount: u64,
+            date: impl Into<String>,
+            time: impl Into<String>,
+            timeout: u16,
+        ) -> Self {
+            Self {
+                amount,
+                date: date.into(),
+                time: time.into(),
+                timeout,
+                message: None,
+            }
+        }
+
+        pub fn with_message(mut self, message: impl Into<String>) -> Self {
+            self.message = Some(message.into());
+            self
+        }
+    }
+
+    impl AbecsTypedCommand for GetCard {
+        type Response = GetCardResponse;
+
+        fn command_id(&self) -> &str {
+            "GCX"
+        }
+
+        fn serialize_params(&self) -> Vec<Vec<u8>> {
+            use crate::serialize::abecs_param;
+
+            let mut all_params = Vec::new();
+
+            // SPE_AMOUNT (0x0013) - valor em centavos, 12 dígitos
+            let amount_str = format!("{:012}", self.amount);
+            all_params.extend_from_slice(&abecs_param(0x0013, amount_str.as_bytes()));
+
+            // SPE_TRNDATE (0x0015) - data AAMMDD
+            all_params.extend_from_slice(&abecs_param(0x0015, self.date.as_bytes()));
+
+            // SPE_TRNTIME (0x0016) - hora HHMMSS
+            all_params.extend_from_slice(&abecs_param(0x0016, self.time.as_bytes()));
+
+            // SPE_GCXOPT (0x0017) - opções: "10000" = aceita mag/ICC/CTLS e mostra valor
+            all_params.extend_from_slice(&abecs_param(0x0017, b"10000"));
+
+            // SPE_TIMEOUT (0x000C) - timeout em segundos
+            all_params.extend_from_slice(&abecs_param(0x000C, &[self.timeout as u8]));
+
+            // SPE_DSPMSG (0x001B) - mensagem customizada (opcional)
+            if let Some(ref msg) = self.message {
+                all_params.extend_from_slice(&abecs_param(0x001B, msg.as_bytes()));
             }
 
             // Retorna como um único bloco
@@ -523,6 +642,67 @@ impl AbecsDeserialize for GetDataResponse {
 
         let data = String::from_utf8_lossy(&block[4..4 + param_len as usize]).to_string();
         Ok(GetDataResponse { data })
+    }
+}
+
+impl AbecsDeserialize for GetCardResponse {
+    fn deserialize_abecs(response: &AbecsResponse) -> Result<Self, String> {
+        // A resposta de GCX vem em formato TLV com múltiplos parâmetros
+        let block = response.get_block(0).ok_or("Bloco não encontrado")?;
+
+        let mut card_type = String::new();
+        let mut pan = None;
+        let mut track1 = None;
+        let mut track2 = None;
+        let mut track3 = None;
+
+        // Parser TLV simples
+        let mut pos = 0;
+        while pos + 4 <= block.len() {
+            let param_id = ((block[pos] as u16) << 8) | (block[pos + 1] as u16);
+            let param_len = ((block[pos + 2] as u16) << 8) | (block[pos + 3] as u16);
+            pos += 4;
+
+            if pos + param_len as usize > block.len() {
+                break;
+            }
+
+            let value = &block[pos..pos + param_len as usize];
+
+            match param_id {
+                0x804F => {
+                    // PP_CARDTYPE
+                    card_type = String::from_utf8_lossy(value).to_string();
+                }
+                0x8036 => {
+                    // PP_PAN
+                    pan = Some(String::from_utf8_lossy(value).to_string());
+                }
+                0x8037 => {
+                    // PP_TRK1INC
+                    track1 = Some(String::from_utf8_lossy(value).to_string());
+                }
+                0x8038 => {
+                    // PP_TRK2INC
+                    track2 = Some(String::from_utf8_lossy(value).to_string());
+                }
+                0x8039 => {
+                    // PP_TRK3INC
+                    track3 = Some(String::from_utf8_lossy(value).to_string());
+                }
+                _ => {}
+            }
+
+            pos += param_len as usize;
+        }
+
+        Ok(GetCardResponse {
+            card_type,
+            pan,
+            track1,
+            track2,
+            track3,
+        })
     }
 }
 

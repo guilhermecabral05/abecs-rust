@@ -56,9 +56,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "DIGITE A SENHA", // Mensagem
         4,                // Tamanho mínimo do PIN
         12,               // Tamanho máximo do PIN
-        30,               // Timeout em segundos
-        "01",             // Tipo de criptografia (01 = DUKPT/3DES)
-        pan,              // PAN do cartão (últimos 12 dígitos)
+        "2",              // Método: "2" = DUKPT:DES:PIN
+        "00",             // Índice da chave DUKPT
+        "",               // Working Key (ignorado para DUKPT)
+        pan,              // PAN do cartão
     );
 
     match pinpad.execute_typed(&cmd) {
