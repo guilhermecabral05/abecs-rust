@@ -17,7 +17,7 @@ Existem duas formas de usar a biblioteca:
 ```rust
 use pinpad::{AbecsCommand, PinpadConnection};
 
-let mut pinpad = PinpadConnection::open("/dev/ttyACM0")?;
+let mut pinpad = PinpadConnection::open("/dev/ttyACM1")?;
 let response = pinpad.execute(&AbecsCommand::open())?;
 
 if response.is_success() {
@@ -30,7 +30,7 @@ if response.is_success() {
 ```rust
 use pinpad::{PinpadConnection, OpenCommand};
 
-let mut pinpad = PinpadConnection::open("/dev/ttyACM0")?;
+let mut pinpad = PinpadConnection::open("/dev/ttyACM1")?;
 let command = OpenCommand;
 let response = pinpad.execute_typed(&command)?;
 // response é do tipo OpenResponse

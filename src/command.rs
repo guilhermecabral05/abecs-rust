@@ -1,16 +1,17 @@
-/// Estrutura para representar um comando ABECS
-
-/// Comando ABECS a ser enviado ao Pinpad
+/// Estrutura para representar um comando ABECS (API de baixo nível)
+///
+/// Esta é a API de baixo nível para construir comandos ABECS manualmente.
+/// Para uma API mais fácil e type-safe, use `AbecsCommand::Display::new()` e similares.
 ///
 /// # Exemplo
 /// ```
-/// use pinpad::AbecsCommand;
+/// use pinpad::RawAbecsCommand;
 ///
 /// // Comando simples (sem parâmetros)
-/// let cmd = AbecsCommand::new("OPN");
+/// let cmd = RawAbecsCommand::new("OPN");
 ///
 /// // Comando com parâmetros
-/// let mut cmd = AbecsCommand::new("DSP");
+/// let mut cmd = RawAbecsCommand::new("DSP");
 /// cmd.add_block(b"032          BEM-VINDO       ".to_vec());
 /// ```
 #[derive(Debug, Clone)]

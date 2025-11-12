@@ -6,7 +6,7 @@
 use pinpad::{PinpadConnection, AbecsCommand};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut pinpad = PinpadConnection::open("/dev/ttyACM0")?;
+    let mut pinpad = PinpadConnection::open("/dev/ttyACM1")?;
     pinpad.execute(&AbecsCommand::open())?;
     println!("✓ Conectado!");
     Ok(())
@@ -19,7 +19,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 use pinpad::{PinpadConnection, AbecsCommand};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut pinpad = PinpadConnection::open("/dev/ttyACM0")?;
+    let mut pinpad = PinpadConnection::open("/dev/ttyACM1")?;
     
     // Formato: "TTT" + mensagem
     // TTT = tempo em segundos (032 = 32 segundos)
@@ -36,7 +36,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 use pinpad::{PinpadConnection, AbecsCommand};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut pinpad = PinpadConnection::open("/dev/ttyACM0")?;
+    let mut pinpad = PinpadConnection::open("/dev/ttyACM1")?;
     
     let response = pinpad.execute(&AbecsCommand::get_info("01"))?;
     
@@ -56,7 +56,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 use pinpad::{PinpadConnection, AbecsCommand};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut pinpad = PinpadConnection::open("/dev/ttyACM0")?;
+    let mut pinpad = PinpadConnection::open("/dev/ttyACM1")?;
     
     // Abre sessão
     pinpad.execute(&AbecsCommand::open())?;
@@ -86,7 +86,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 use pinpad::{PinpadConnection, AbecsCommand};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut pinpad = PinpadConnection::open("/dev/ttyACM0")?;
+    let mut pinpad = PinpadConnection::open("/dev/ttyACM1")?;
     
     // Ativa modo verbose para ver todos os bytes
     pinpad.set_verbose(true);
@@ -118,7 +118,7 @@ fn main() {
 }
 
 fn run() -> Result<(), AbecsError> {
-    let mut pinpad = PinpadConnection::open("/dev/ttyACM0")?;
+    let mut pinpad = PinpadConnection::open("/dev/ttyACM1")?;
     
     let response = pinpad.execute(&AbecsCommand::open())?;
     
@@ -139,7 +139,7 @@ fn run() -> Result<(), AbecsError> {
 use pinpad::{PinpadConnection, AbecsCommand};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut pinpad = PinpadConnection::open("/dev/ttyACM0")?;
+    let mut pinpad = PinpadConnection::open("/dev/ttyACM1")?;
     
     let mut cmd = AbecsCommand::new("MYC"); // Seu comando
     cmd.add_string("param1");
@@ -159,7 +159,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 use pinpad::{PinpadConnection, AbecsCommand};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut pinpad = PinpadConnection::open("/dev/ttyACM0")?;
+    let mut pinpad = PinpadConnection::open("/dev/ttyACM1")?;
     
     let response = pinpad.execute(&AbecsCommand::get_info("01"))?;
     

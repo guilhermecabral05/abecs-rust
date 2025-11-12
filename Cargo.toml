@@ -10,9 +10,5 @@ license = "MIT"
 name = "pinpad"
 path = "src/lib.rs"
 
-[[bin]]
-name = "pinpad-example"
-path = "src/main.rs"
-
 [dependencies]
 serialport = "4.3"

@@ -26,46 +26,53 @@ pinpad = { path = "../pinpad" }
 
 ## 🚀 Uso Rápido
 
-### API Tipada (Recomendada)
+### Nova API Tipada (Recomendada) ⭐
 
 ```rust
-use pinpad::{PinpadConnection, OpenCommand, DisplayCommand};
+use pinpad::{AbecsCommand, PinpadConnection};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Conecta ao Pinpad
-    let mut pinpad = PinpadConnection::open("/dev/ttyACM0")?;
+    let mut pinpad = PinpadConnection::open("/dev/ttyACM1")?;
     
-    // Abre uma sessão (com tipo seguro)
-    let command = OpenCommand;
-    let response = pinpad.execute_typed(&command)?;
-    println!("✓ Sessão aberta!");
+    // Abre uma sessão - Sintaxe clara e intuitiva!
+    let cmd = AbecsCommand::Open::new();
+    pinpad.execute_typed(&cmd)?;
     
-    // Exibe uma mensagem (com tipo seguro)
-    let command = DisplayCommand::new("BEM-VINDO!");
-    pinpad.execute_typed(&command)?;
+    // Exibe uma mensagem
+    let cmd = AbecsCommand::Display::new("BEM-VINDO!");
+    pinpad.execute_typed(&cmd)?;
+    
+    // Obter informações
+    let cmd = AbecsCommand::GetInfo::new("01");
+    let response = pinpad.execute_typed(&cmd)?;
+    println!("Info: {}", response.info);
+    
+    // Fechar sessão
+    let cmd = AbecsCommand::Close::new();
+    pinpad.execute_typed(&cmd)?;
     
     Ok(())
 }
 ```
 
-### API Tradicional (Flexível)
+### API de Baixo Nível (Para casos avançados)
 
 ```rust
-use pinpad::{PinpadConnection, AbecsCommand};
+use pinpad::{RawAbecsCommand, PinpadConnection};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Conecta ao Pinpad
-    let mut pinpad = PinpadConnection::open("/dev/ttyACM0")?;
+    let mut pinpad = PinpadConnection::open("/dev/ttyACM1")?;
     
-    // Abre uma sessão
-    let response = pinpad.execute(&AbecsCommand::open())?;
+    // Construir comando manualmente
+    let mut cmd = RawAbecsCommand::new("DSP");
+    cmd.add_block(b"032Olá Pinpad!".to_vec());
+    
+    let response = pinpad.execute(&cmd)?;
     
     if response.is_success() {
-        println!("✓ Sessão aberta!");
+        println!("✓ Comando executado!");
     }
-    
-    // Exibe uma mensagem
-    pinpad.execute(&AbecsCommand::display("032Olá Pinpad!"))?;
     
     Ok(())
 }
@@ -73,44 +80,90 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ## 📖 Exemplos
 
-### Comandos Tipados Disponíveis
+### 📚 Exemplos Completos
+
+A biblioteca inclui **7 exemplos completos e documentados** na pasta `examples/`:
+
+```bash
+cargo run --example 01_basico              # Uso básico da biblioteca
+cargo run --example 02_informacoes         # Obter info do Pinpad
+cargo run --example 03_menu                # Menu interativo
+cargo run --example 04_entrada_dados       # Capturar dados
+cargo run --example 05_captura_pin         # Captura segura de PIN
+cargo run --example 06_comando_personalizado  # Criar seus comandos
+cargo run --example 07_transacao_completa  # Fluxo completo de pagamento
+```
+
+**[📖 Ver todos os exemplos em detalhes](examples/README.md)**
+
+### Comandos Disponíveis
 
 A biblioteca oferece comandos tipados para maior segurança e facilidade de uso:
 
 ```rust
-use pinpad::*;
+use pinpad::AbecsCommand;
 
-// Comandos básicos
-let cmd = OpenCommand;
-let cmd = CloseCommand;
+// ═══════════════════════════════════════════════════════════
+// Comandos Básicos
+// ═══════════════════════════════════════════════════════════
+let cmd = AbecsCommand::Open::new();         // Abrir sessão
+let cmd = AbecsCommand::Close::new();        // Fechar sessão
 
+// ═══════════════════════════════════════════════════════════
 // Display
-let cmd = DisplayCommand::new("MENSAGEM");
-let cmd = ClearDisplayCommand;
+// ═══════════════════════════════════════════════════════════
+let cmd = AbecsCommand::Display::new("MENSAGEM");
+let cmd = AbecsCommand::ClearDisplay::new();
 
+// ═══════════════════════════════════════════════════════════
 // Informações
-let cmd = GetInfoCommand::new("01");
+// ═══════════════════════════════════════════════════════════
+let cmd = AbecsCommand::GetInfo::new("01");
 let response = pinpad.execute_typed(&cmd)?;
 println!("Info: {}", response.info);
 
-// Entrada de PIN (blocante)
-let cmd = GetPinCommand::new("DIGITE O PIN", 4, 12, 30, "01", "1234567890123456");
+// ═══════════════════════════════════════════════════════════
+// Entrada de Dados (Blocantes) ⏱️
+// ═══════════════════════════════════════════════════════════
+
+// Capturar PIN (criptografado)
+let cmd = AbecsCommand::GetPin::new(
+    "DIGITE O PIN",        // mensagem
+    4,                      // min length
+    12,                     // max length
+    30,                     // timeout (segundos)
+    "01",                   // tipo de criptografia
+    "1234567890123456"     // PAN do cartão
+);
 let response = pinpad.execute_typed(&cmd)?;
 println!("PIN Block: {:02X?}", response.pin_block);
 
-// Entrada de dados (blocante)
-let cmd = GetDataCommand::new("DIGITE", 1, 10, 60);
+// Capturar dados (texto/números)
+let cmd = AbecsCommand::GetData::new("DIGITE O VALOR", 1, 10, 60);
 let response = pinpad.execute_typed(&cmd)?;
 println!("Data: {}", response.data);
 
-// Menu (blocante)
+// Menu de seleção
 let options = vec!["CREDITO".to_string(), "DEBITO".to_string()];
-let cmd = MenuCommand::new("SELECIONE", options, 30);
+let cmd = AbecsCommand::Menu::new("FORMA PAGAMENTO", options, 30);
 let response = pinpad.execute_typed(&cmd)?;
 println!("Selecionado: {}", response.selected_index);
+
+// ═══════════════════════════════════════════════════════════
+// Tabelas
+// ═══════════════════════════════════════════════════════════
+let cmd = AbecsCommand::TableLoadInit::new("TAB01");
+let cmd = AbecsCommand::TableLoadRecord::new(vec![0x01, 0x02]);
+let cmd = AbecsCommand::TableLoadFinish::new();
+
+// ═══════════════════════════════════════════════════════════
+// Criptografia
+// ═══════════════════════════════════════════════════════════
+let cmd = AbecsCommand::GetKey::new(0);  // índice da chave
+let response = pinpad.execute_typed(&cmd)?;
 ```
 
-📚 **[Veja a documentação completa dos comandos tipados](TYPED_COMMANDS.md)**
+📚 **[Documentação completa dos comandos](TYPED_COMMANDS.md)**
 
 ### Listar Portas Disponíveis
 
@@ -153,7 +206,7 @@ for i in 0..response.block_count() {
 ### Modo Verbose (Debug)
 
 ```rust
-let mut pinpad = PinpadConnection::open("/dev/ttyACM0")?;
+let mut pinpad = PinpadConnection::open("/dev/ttyACM1")?;
 pinpad.set_verbose(true); // Mostra todos os bytes trocados
 ```
 

@@ -16,7 +16,7 @@ use crate::Result;
 /// ```ignore
 /// use pinpad::PinpadConnection;
 ///
-/// let mut pinpad = PinpadConnection::open("/dev/ttyACM0")?;
+/// let mut pinpad = PinpadConnection::open("/dev/ttyACM1")?;
 /// let response = pinpad.execute(&AbecsCommand::open())?;
 /// ```
 pub struct PinpadConnection {
@@ -27,7 +27,7 @@ impl PinpadConnection {
     /// Abre uma conexão com o Pinpad
     ///
     /// # Argumentos
-    /// * `port_name` - Nome da porta serial (ex: "/dev/ttyACM0" no Linux, "COM3" no Windows)
+    /// * `port_name` - Nome da porta serial (ex: "/dev/ttyACM1" no Linux, "COM3" no Windows)
     ///
     /// # Configuração
     /// - Baud rate: 19200 bps
@@ -142,7 +142,7 @@ impl PinpadConnection {
     /// ```ignore
     /// use pinpad::{PinpadConnection, OpenCommand};
     ///
-    /// let mut pinpad = PinpadConnection::open("/dev/ttyACM0")?;
+    /// let mut pinpad = PinpadConnection::open("/dev/ttyACM1")?;
     /// let command = OpenCommand;
     /// let response = pinpad.execute_typed(&command)?;
     /// ```

@@ -18,7 +18,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Conecta ao Pinpad
-    let port_name = "/dev/ttyACM0"; // Ajuste conforme necessário
+    let port_name = "/dev/ttyACM1"; // Ajuste conforme necessário
     println!("\n✓ Conectando em {}...", port_name);
 
     let mut pinpad = PinpadConnection::open(port_name)?;
