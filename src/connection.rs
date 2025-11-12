@@ -7,6 +7,7 @@ use crate::command::AbecsCommand;
 use crate::error::AbecsError;
 use crate::protocol::*;
 use crate::response::AbecsResponse;
+use crate::serialize::{AbecsDeserialize, AbecsTypedCommand};
 use crate::Result;
 
 /// Conexão com o Pinpad via porta serial
@@ -22,7 +23,6 @@ pub struct PinpadConnection {
     port: Box<dyn SerialPort>,
     verbose: bool,
 }
-
 impl PinpadConnection {
     /// Abre uma conexão com o Pinpad
     ///
@@ -131,6 +131,39 @@ impl PinpadConnection {
         self.send_command(command)?;
         let raw_response = self.receive_response(true)?;
         AbecsResponse::deserialize(&raw_response).map_err(|e| AbecsError::InvalidResponse(e))
+    }
+
+    /// Executa um comando tipado e retorna uma resposta tipada
+    ///
+    /// # Argumentos
+    /// * `command` - Comando tipado a ser executado
+    ///
+    /// # Exemplo
+    /// ```ignore
+    /// use pinpad::{PinpadConnection, OpenCommand};
+    ///
+    /// let mut pinpad = PinpadConnection::open("/dev/ttyACM0")?;
+    /// let command = OpenCommand;
+    /// let response = pinpad.execute_typed(&command)?;
+    /// ```
+    pub fn execute_typed<C: AbecsTypedCommand>(&mut self, command: &C) -> Result<C::Response> {
+        // Cria o comando ABECS
+        let mut abecs_cmd = AbecsCommand::new(command.command_id());
+
+        // Adiciona os parâmetros
+        for param in command.serialize_params() {
+            abecs_cmd.add_block(param);
+        }
+
+        // Executa o comando (blocante ou não)
+        let raw_response = if command.is_blocking() {
+            self.execute_blocking(&abecs_cmd)?
+        } else {
+            self.execute(&abecs_cmd)?
+        };
+
+        // Desserializa a resposta tipada
+        C::Response::deserialize_abecs(&raw_response).map_err(|e| AbecsError::InvalidResponse(e))
     }
 
     /// Envia um comando para o Pinpad (interno)

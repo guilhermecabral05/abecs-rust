@@ -7,12 +7,13 @@ Biblioteca Rust para comunicação com Pinpads via Protocolo ABECS 2.12.
 
 ## ✨ Características
 
-- ✅ **Fácil de usar** - API simples e intuitiva
-- ✅ **Type-safe** - Aproveitando o sistema de tipos do Rust
+- ✅ **Fácil de usar** - API simples e intuitiva com comandos tipados
+- ✅ **Type-safe** - API tipada com segurança em tempo de compilação
 - ✅ **Protocolo completo** - Implementação conforme especificação ABECS 2.12
 - ✅ **Confiável** - CRC-16, retransmissão automática, validação de pacotes
 - ✅ **Bem documentado** - Exemplos e documentação completa
 - ✅ **Modular** - Código organizado em módulos
+- ✅ **Flexível** - Suporta comandos personalizados
 
 ## 📦 Instalação
 
@@ -24,6 +25,30 @@ pinpad = { path = "../pinpad" }
 ```
 
 ## 🚀 Uso Rápido
+
+### API Tipada (Recomendada)
+
+```rust
+use pinpad::{PinpadConnection, OpenCommand, DisplayCommand};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Conecta ao Pinpad
+    let mut pinpad = PinpadConnection::open("/dev/ttyACM0")?;
+    
+    // Abre uma sessão (com tipo seguro)
+    let command = OpenCommand;
+    let response = pinpad.execute_typed(&command)?;
+    println!("✓ Sessão aberta!");
+    
+    // Exibe uma mensagem (com tipo seguro)
+    let command = DisplayCommand::new("BEM-VINDO!");
+    pinpad.execute_typed(&command)?;
+    
+    Ok(())
+}
+```
+
+### API Tradicional (Flexível)
 
 ```rust
 use pinpad::{PinpadConnection, AbecsCommand};
@@ -48,6 +73,45 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ## 📖 Exemplos
 
+### Comandos Tipados Disponíveis
+
+A biblioteca oferece comandos tipados para maior segurança e facilidade de uso:
+
+```rust
+use pinpad::*;
+
+// Comandos básicos
+let cmd = OpenCommand;
+let cmd = CloseCommand;
+
+// Display
+let cmd = DisplayCommand::new("MENSAGEM");
+let cmd = ClearDisplayCommand;
+
+// Informações
+let cmd = GetInfoCommand::new("01");
+let response = pinpad.execute_typed(&cmd)?;
+println!("Info: {}", response.info);
+
+// Entrada de PIN (blocante)
+let cmd = GetPinCommand::new("DIGITE O PIN", 4, 12, 30, "01", "1234567890123456");
+let response = pinpad.execute_typed(&cmd)?;
+println!("PIN Block: {:02X?}", response.pin_block);
+
+// Entrada de dados (blocante)
+let cmd = GetDataCommand::new("DIGITE", 1, 10, 60);
+let response = pinpad.execute_typed(&cmd)?;
+println!("Data: {}", response.data);
+
+// Menu (blocante)
+let options = vec!["CREDITO".to_string(), "DEBITO".to_string()];
+let cmd = MenuCommand::new("SELECIONE", options, 30);
+let response = pinpad.execute_typed(&cmd)?;
+println!("Selecionado: {}", response.selected_index);
+```
+
+📚 **[Veja a documentação completa dos comandos tipados](TYPED_COMMANDS.md)**
+
 ### Listar Portas Disponíveis
 
 ```rust
@@ -57,7 +121,7 @@ for port in ports {
 }
 ```
 
-### Comandos Pré-definidos
+### Comandos Pré-definidos (API Tradicional)
 
 ```rust
 // Abertura de sessão

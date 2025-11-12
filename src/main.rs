@@ -1,5 +1,5 @@
 /// Exemplo de uso da biblioteca Pinpad ABECS
-use pinpad::{AbecsCommand, PinpadConnection};
+use pinpad::{AbecsCommand, DisplayCommand, GetInfoCommand, OpenCommand, PinpadConnection};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("═══════════════════════════════════════════════════════");
@@ -28,10 +28,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _ = pinpad.cancel();
 
     // ═══════════════════════════════════════════════════════════
-    // Exemplo 1: Comando OPN (Open)
+    // Exemplo 1: Comando OPN (Open) - API Antiga
     // ═══════════════════════════════════════════════════════════
     println!("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    println!("Exemplo 1: Abertura de Sessão");
+    println!("Exemplo 1: Abertura de Sessão (API Antiga)");
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 
     let response = pinpad.execute(&AbecsCommand::open())?;
@@ -43,46 +43,48 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // ═══════════════════════════════════════════════════════════
-    // Exemplo 2: Mostrar mensagem no display
+    // Exemplo 2: Comando OPN (Open) - API Tipada
     // ═══════════════════════════════════════════════════════════
     println!("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    println!("Exemplo 2: Exibir Mensagem");
+    println!("Exemplo 2: Abertura de Sessão (API Tipada)");
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 
-    let message = "032          BIBLIOTECA      PINPAD RUST     ";
-    let response = pinpad.execute(&AbecsCommand::display(message))?;
-
-    if response.is_success() {
-        println!("\n✓ Mensagem exibida no Pinpad!");
-    }
+    let command = OpenCommand;
+    let _response = pinpad.execute_typed(&command)?;
+    println!("\n✓ Sessão aberta com sucesso (API Tipada)!");
 
     // ═══════════════════════════════════════════════════════════
-    // Exemplo 3: Obter informações do Pinpad
+    // Exemplo 3: Mostrar mensagem no display - API Tipada
     // ═══════════════════════════════════════════════════════════
     println!("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    println!("Exemplo 3: Informações do Pinpad");
+    println!("Exemplo 3: Exibir Mensagem (API Tipada)");
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 
-    let response = pinpad.execute(&AbecsCommand::get_info("01"))?;
-
-    if response.is_success() {
-        println!("\n✓ Informações recebidas:");
-        for i in 0..response.block_count() {
-            if let Some(text) = response.get_string(i) {
-                println!("  • {}", text.trim());
-            }
-        }
-    }
+    let command = DisplayCommand::new("032 BIBLIOTECA PINPAD RUST ");
+    let _response = pinpad.execute_typed(&command)?;
+    println!("\n✓ Mensagem exibida no Pinpad!");
 
     // ═══════════════════════════════════════════════════════════
-    // Exemplo 4: Comando personalizado
+    // Exemplo 4: Obter informações do Pinpad - API Tipada
     // ═══════════════════════════════════════════════════════════
     println!("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    println!("Exemplo 4: Comando Personalizado");
+    println!("Exemplo 4: Informações do Pinpad (API Tipada)");
+    println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+
+    let command = GetInfoCommand::new("01");
+    let response = pinpad.execute_typed(&command)?;
+    println!("\n✓ Informações recebidas:");
+    println!("  • {}", response.info.trim());
+
+    // ═══════════════════════════════════════════════════════════
+    // Exemplo 5: Comando personalizado (API Antiga)
+    // ═══════════════════════════════════════════════════════════
+    println!("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    println!("Exemplo 5: Comando Personalizado (API Antiga)");
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 
     let mut cmd = AbecsCommand::new("DSP");
-    cmd.add_string("032        FINALIZADO       ");
+    cmd.add_string("FINALIZADO");
 
     let response = pinpad.execute(&cmd)?;
     response.print();
