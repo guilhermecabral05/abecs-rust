@@ -162,6 +162,14 @@ impl PinpadConnection {
             self.execute(&abecs_cmd)?
         };
 
+        // Verifica o status antes de desserializar
+        if !raw_response.is_success() {
+            return Err(AbecsError::PinpadError {
+                status: raw_response.status().to_string(),
+                description: raw_response.status_description().to_string(),
+            });
+        }
+
         // Desserializa a resposta tipada
         C::Response::deserialize_abecs(&raw_response).map_err(|e| AbecsError::InvalidResponse(e))
     }
@@ -232,17 +240,23 @@ impl PinpadConnection {
             println!("\n← Aguardando resposta...");
         }
 
-        let timeout = if blocking {
-            Duration::from_secs(300)
+        // Para comandos blocantes, usamos timeout longo na leitura inicial (espera do SYN)
+        // Para comandos não-blocantes, usamos timeout curto
+        let initial_timeout = if blocking {
+            Duration::from_secs(300) // 5 minutos para comandos blocantes
         } else {
-            Duration::from_secs(10)
+            Duration::from_secs(10) // 10 segundos para comandos não-blocantes
         };
 
-        self.port
-            .set_timeout(timeout)
-            .map_err(|e| AbecsError::SerialError(format!("Erro ao configurar timeout: {}", e)))?;
+        // Timeout curto para leitura dos dados após receber SYN (2 segundos)
+        let data_timeout = Duration::from_secs(2);
 
         for attempt in 1..=3 {
+            // Configura timeout longo para aguardar o SYN
+            self.port.set_timeout(initial_timeout).map_err(|e| {
+                AbecsError::SerialError(format!("Erro ao configurar timeout: {}", e))
+            })?;
+
             // Aguarda SYN
             let mut buffer = [0u8; 1];
             loop {
@@ -259,6 +273,11 @@ impl PinpadConnection {
                     }
                 }
             }
+
+            // Após receber SYN, configura timeout curto para leitura dos dados
+            self.port.set_timeout(data_timeout).map_err(|e| {
+                AbecsError::SerialError(format!("Erro ao configurar timeout: {}", e))
+            })?;
 
             // Lê dados até ETB
             let mut pkt_data = Vec::new();

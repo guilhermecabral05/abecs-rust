@@ -18,39 +18,53 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let port_name = "/dev/ttyACM1";
     println!("🔌 Conectando em {}...", port_name);
     let mut pinpad = PinpadConnection::open(port_name)?;
+    // pinpad.set_verbose(true); // Descomente para debug
     println!("✅ Conectado!\n");
 
     // Abrir sessão
     let cmd = AbecsCommand::Open::new();
     pinpad.execute_typed(&cmd)?;
 
-    // ═══════════════════════════════════════════════════════════
-    // Tipos de informação disponíveis (código do bloco 1)
-    // ═══════════════════════════════════════════════════════════
-    let info_types = vec![
-        ("01", "Versão do Protocolo ABECS"),
-        ("02", "Nome do Fabricante"),
-        ("03", "Modelo do Equipamento"),
-        ("04", "Número de Série"),
-        ("05", "Versão do Software"),
-        ("06", "Capacidades"),
-    ];
-
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    println!("Obtendo informações do Pinpad...");
+    println!("Obtendo informações gerais do Pinpad (índice 00)...");
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
 
-    for (code, description) in info_types {
-        print!("📊 {}: ", description);
+    // Informações gerais do pinpad (GIN_ACQIDX = "00")
+    let cmd = AbecsCommand::GetInfo::new("00");
+    match pinpad.execute_typed(&cmd) {
+        Ok(response) => {
+            println!("📋 Informações Gerais:\n{}\n", response.info);
+        }
+        Err(e) => {
+            println!("❌ Erro: {}\n", e);
+        }
+    }
 
-        let cmd = AbecsCommand::GetInfo::new(code);
-        match pinpad.execute_typed(&cmd) {
-            Ok(response) => {
-                println!("{}", response.info.trim());
-            }
-            Err(e) => {
-                println!("❌ Erro: {}", e);
-            }
+    println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    println!("Obtendo informações do Kernel Abecs ICC (índice 02)...");
+    println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+
+    let cmd = AbecsCommand::GetInfo::new("02");
+    match pinpad.execute_typed(&cmd) {
+        Ok(response) => {
+            println!("📋 Kernel Abecs (ICC):\n{}\n", response.info);
+        }
+        Err(e) => {
+            println!("❌ Erro: {}\n", e);
+        }
+    }
+
+    println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    println!("Obtendo informações do Kernel Abecs CTLS (índice 03)...");
+    println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+
+    let cmd = AbecsCommand::GetInfo::new("03");
+    match pinpad.execute_typed(&cmd) {
+        Ok(response) => {
+            println!("📋 Kernel Abecs (CTLS):\n{}\n", response.info);
+        }
+        Err(e) => {
+            println!("❌ Erro: {}\n", e);
         }
     }
 
