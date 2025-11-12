@@ -31,6 +31,9 @@ pub struct GetDataResponse {
 /// Resposta do comando Menu
 #[derive(Debug, Clone)]
 pub struct MenuResponse {
+    /// Índice da opção selecionada (baseado em 0)
+    ///
+    /// Exemplo: Se o usuário seleciona a primeira opção, selected_index = 0
     pub selected_index: u8,
 }
 
@@ -239,26 +242,22 @@ pub mod AbecsCommand {
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    // GetData - Obter Dados (GDU)
+    // ═══════════════════════════════════════════════════════════════════════
+    // GetData - Obter Dados (GCD - Get Collected Data)
     // ═══════════════════════════════════════════════════════════════════════
 
     #[derive(Debug, Clone)]
     pub struct GetData {
-        pub message: String,
+        pub message_index: u16, // Índice da mensagem pré-definida (ver protocolo)
         pub min_length: u8,
         pub max_length: u8,
         pub timeout: u16,
     }
 
     impl GetData {
-        pub fn new(
-            message: impl Into<String>,
-            min_length: u8,
-            max_length: u8,
-            timeout: u16,
-        ) -> Self {
+        pub fn new(message_index: u16, min_length: u8, max_length: u8, timeout: u16) -> Self {
             Self {
-                message: message.into(),
+                message_index,
                 min_length,
                 max_length,
                 timeout,
@@ -270,16 +269,38 @@ pub mod AbecsCommand {
         type Response = GetDataResponse;
 
         fn command_id(&self) -> &str {
-            "GDU"
+            "GCD"
         }
 
         fn serialize_params(&self) -> Vec<Vec<u8>> {
-            vec![
-                self.message.serialize_abecs(),
-                vec![self.min_length],
-                vec![self.max_length],
-                format!("{:04}", self.timeout).serialize_abecs(),
-            ]
+            use crate::serialize::abecs_param;
+
+            let mut all_params = Vec::new();
+
+            // SPE_MSGIDX (0x000B) - 2 bytes
+            let idx_bytes = [
+                (self.message_index >> 8) as u8,
+                (self.message_index & 0xFF) as u8,
+            ];
+            all_params.extend_from_slice(&abecs_param(0x000B, &idx_bytes));
+
+            // SPE_MINDIG (0x000D) - 1 byte (opcional)
+            if self.min_length > 0 {
+                all_params.extend_from_slice(&abecs_param(0x000D, &[self.min_length]));
+            }
+
+            // SPE_MAXDIG (0x000E) - 1 byte (opcional)
+            if self.max_length > 0 && self.max_length != 32 {
+                all_params.extend_from_slice(&abecs_param(0x000E, &[self.max_length]));
+            }
+
+            // SPE_TIMEOUT (0x000C) - 1 byte (opcional)
+            if self.timeout > 0 {
+                all_params.extend_from_slice(&abecs_param(0x000C, &[self.timeout as u8]));
+            }
+
+            // Retorna como um único bloco
+            vec![all_params]
         }
 
         fn is_blocking(&self) -> bool {
@@ -316,17 +337,25 @@ pub mod AbecsCommand {
         }
 
         fn serialize_params(&self) -> Vec<Vec<u8>> {
-            let mut params = vec![
-                self.title.serialize_abecs(),
-                format!("{:04}", self.timeout).serialize_abecs(),
-                vec![self.options.len() as u8],
-            ];
+            use crate::serialize::abecs_param;
 
+            let mut all_params = Vec::new();
+
+            // SPE_TIMEOUT (0x000C) - 1 byte
+            all_params.extend_from_slice(&abecs_param(0x000C, &[self.timeout as u8]));
+
+            // SPE_MNUOPT (0x0020) - cada opção
             for option in &self.options {
-                params.push(option.serialize_abecs());
+                all_params.extend_from_slice(&abecs_param(0x0020, option.as_bytes()));
             }
 
-            params
+            // SPE_DSPMSG (0x001B) - título do menu
+            if !self.title.is_empty() {
+                all_params.extend_from_slice(&abecs_param(0x001B, self.title.as_bytes()));
+            }
+
+            // Retorna como um único bloco
+            vec![all_params]
         }
 
         fn is_blocking(&self) -> bool {
@@ -473,19 +502,63 @@ impl AbecsDeserialize for GetPinResponse {
 
 impl AbecsDeserialize for GetDataResponse {
     fn deserialize_abecs(response: &AbecsResponse) -> Result<Self, String> {
-        let data = response.get_string(0).unwrap_or_default();
+        // A resposta de GCD vem no formato TLV: PP_VALUE (0x804D)
+        let block = response.get_block(0).ok_or("Bloco não encontrado")?;
+
+        // Parse TLV: ID(2) + Len(2) + Value
+        if block.len() < 4 {
+            return Err("Resposta muito curta".to_string());
+        }
+
+        let param_id = ((block[0] as u16) << 8) | (block[1] as u16);
+        let param_len = ((block[2] as u16) << 8) | (block[3] as u16);
+
+        if param_id != 0x804D {
+            return Err(format!("ID de parâmetro inesperado: 0x{:04X}", param_id));
+        }
+
+        if block.len() < 4 + param_len as usize {
+            return Err("Dados incompletos".to_string());
+        }
+
+        let data = String::from_utf8_lossy(&block[4..4 + param_len as usize]).to_string();
         Ok(GetDataResponse { data })
     }
 }
 
 impl AbecsDeserialize for MenuResponse {
     fn deserialize_abecs(response: &AbecsResponse) -> Result<Self, String> {
-        let index_str = response.get_string(0).ok_or("Índice não encontrado")?;
+        // A resposta de MNU vem no formato TLV: PP_VALUE (0x804D)
+        let block = response.get_block(0).ok_or("Bloco não encontrado")?;
 
-        let selected_index = index_str
+        // Parse TLV: ID(2) + Len(2) + Value
+        if block.len() < 4 {
+            return Err("Resposta muito curta".to_string());
+        }
+
+        let param_id = ((block[0] as u16) << 8) | (block[1] as u16);
+        let param_len = ((block[2] as u16) << 8) | (block[3] as u16);
+
+        if param_id != 0x804D {
+            return Err(format!("ID de parâmetro inesperado: 0x{:04X}", param_id));
+        }
+
+        if block.len() < 4 + param_len as usize {
+            return Err("Dados incompletos".to_string());
+        }
+
+        let index_str = String::from_utf8_lossy(&block[4..4 + param_len as usize]);
+        let option_number = index_str
             .trim()
             .parse::<u8>()
             .map_err(|e| format!("Erro ao parsear índice: {}", e))?;
+
+        // O Pinpad retorna o número da opção (1, 2, 3...), mas precisamos do índice do array (0, 1, 2...)
+        let selected_index = if option_number > 0 {
+            option_number - 1
+        } else {
+            return Err("Número de opção inválido (deve ser >= 1)".to_string());
+        };
 
         Ok(MenuResponse { selected_index })
     }

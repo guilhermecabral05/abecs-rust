@@ -32,15 +32,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
 
     println!("💡 Aguardando digitação no Pinpad...");
+    println!("   Mensagem: DIGITE QUANTIDADE");
     println!("   Mínimo: 1 dígito");
     println!("   Máximo: 10 dígitos");
     println!("   Timeout: 60 segundos\n");
 
+    // SPE_MSGIDX = 0x0021 (DIGITE QUANTIDADE)
     let cmd = AbecsCommand::GetData::new(
-        "DIGITE O VALOR", // Mensagem
-        1,                // Mínimo de caracteres
-        10,               // Máximo de caracteres
-        60,               // Timeout em segundos
+        0x0021,  // Índice da mensagem pré-definida
+        1,       // Mínimo de caracteres
+        10,      // Máximo de caracteres
+        60,      // Timeout em segundos
     );
 
     match pinpad.execute_typed(&cmd) {
@@ -49,9 +51,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             // Tentar parsear como valor monetário (centavos)
             if let Ok(valor) = response.data.parse::<u64>() {
-                let reais = valor / 100;
-                let centavos = valor % 100;
-                println!("   💰 R$ {},{:02}\n", reais, centavos);
+                println!("   💰 Quantidade: {}\n", valor);
             }
         }
         Err(e) => {
@@ -63,15 +63,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Exemplo 2: Capturar código
     // ═══════════════════════════════════════════════════════════
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    println!("Capturando código de autorização...");
+    println!("Capturando código de segurança...");
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
 
-    println!("💡 Aguardando código (6 dígitos)...\n");
+    println!("💡 Aguardando código (3 a 4 dígitos)...\n");
 
+    // SPE_MSGIDX = 0x000C (DIGITE CÓDIGO DE SEGURANÇA)
     let cmd = AbecsCommand::GetData::new(
-        "CODIGO AUTORIZACAO",
-        6, // Exatamente 6 dígitos
-        6,
+        0x000C,  // DIGITE CÓDIGO DE SEGURANÇA
+        3,       // Mínimo 3 dígitos
+        4,       // Máximo 4 dígitos
         30,
     );
 
@@ -93,9 +94,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("💡 Digite o CPF (11 dígitos)...\n");
 
+    // SPE_MSGIDX = 0x0007 (DIGITE O CPF)
     let cmd = AbecsCommand::GetData::new(
-        "DIGITE SEU CPF",
-        11, // CPF tem 11 dígitos
+        0x0007,  // DIGITE O CPF
+        11,      // CPF tem 11 dígitos
         11,
         45,
     );

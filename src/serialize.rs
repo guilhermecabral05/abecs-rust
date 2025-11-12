@@ -39,6 +39,26 @@ impl AbecsSerialize for &[u8] {
     }
 }
 
+/// Cria um parâmetro no formato ABECS (ID + Length + Data)
+/// Usado para comandos Abecs que requerem parâmetros com identificadores
+pub fn abecs_param(param_id: u16, data: &[u8]) -> Vec<u8> {
+    let mut param = Vec::new();
+
+    // ID do parâmetro (2 bytes, big-endian)
+    param.push((param_id >> 8) as u8);
+    param.push((param_id & 0xFF) as u8);
+
+    // Tamanho dos dados (2 bytes, big-endian)
+    let len = data.len() as u16;
+    param.push((len >> 8) as u8);
+    param.push((len & 0xFF) as u8);
+
+    // Dados
+    param.extend_from_slice(data);
+
+    param
+}
+
 /// Trait para comandos ABECS tipados
 pub trait AbecsTypedCommand {
     /// Tipo da resposta esperada
