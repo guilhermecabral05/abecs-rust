@@ -10,6 +10,8 @@ Biblioteca Rust para comunicação com Pinpads via Protocolo ABECS 2.12.
 - ✅ **Fácil de usar** - API simples e intuitiva com comandos tipados
 - ✅ **Type-safe** - API tipada com segurança em tempo de compilação
 - ✅ **Protocolo completo** - Implementação conforme especificação ABECS 2.12
+- ✅ **Transações EMV** - Suporte completo a chip (GOX/FCX) e contactless
+- ✅ **Parsing EMV** - Parser TLV para dados EMV (tags ISO 7816)
 - ✅ **Confiável** - CRC-16, retransmissão automática, validação de pacotes
 - ✅ **Bem documentado** - Exemplos e documentação completa
 - ✅ **Modular** - Código organizado em módulos
@@ -91,7 +93,8 @@ cargo run --example 03_menu                # Menu interativo
 cargo run --example 04_entrada_dados       # Capturar dados
 cargo run --example 05_captura_pin         # Captura segura de PIN
 cargo run --example 06_comando_personalizado  # Criar seus comandos
-cargo run --example 07_transacao_completa  # Fluxo completo de pagamento
+cargo run --example 07_transacao_completa  # Fluxo completo (tarja magnética)
+cargo run --example 08_transacao_emv_completa # Transação EMV com chip
 ```
 
 **[📖 Ver todos os exemplos em detalhes](examples/README.md)**
@@ -148,6 +151,57 @@ let options = vec!["CREDITO".to_string(), "DEBITO".to_string()];
 let cmd = AbecsCommand::Menu::new("FORMA PAGAMENTO", options, 30);
 let response = pinpad.execute_typed(&cmd)?;
 println!("Selecionado: {}", response.selected_index);
+
+// ═══════════════════════════════════════════════════════════
+// Transações com Cartão
+// ═══════════════════════════════════════════════════════════
+
+// Leitura de cartão (chip, tarja ou contactless)
+let cmd = AbecsCommand::GetCard::new(
+    25000,    // Valor em centavos (R$ 250,00)
+    "251115", // Data AAMMDD
+    "143000", // Hora HHMMSS
+    60,       // Timeout em segundos
+).with_message("INSIRA OU APROXIME");
+
+let response = pinpad.execute_typed(&cmd)?;
+println!("Tipo: {}", response.card_type); // "00"=Mag, "03"=ICC, "06"=CTLS
+if let Some(pan) = response.pan {
+    println!("PAN: {}", pan);
+}
+if let Some(emv) = response.emv_data {
+    println!("Tags EMV: {}", emv.tags().len());
+}
+
+// ═══════════════════════════════════════════════════════════
+// Transações EMV (Chip)
+// ═══════════════════════════════════════════════════════════
+
+// Processar chip EMV
+let terminal_params = vec![0x9F, 0x33, 0x03, 0xE0, 0xF8, 0xC8];
+let cmd = AbecsCommand::GoOnChip::new(
+    "04",           // Tipo de aplicação (débito)
+    25000,          // Valor em centavos
+    "251115",       // Data
+    "143000",       // Hora
+    terminal_params,
+).with_currency("0986"); // BRL
+
+let response = pinpad.execute_typed(&cmd)?;
+println!("GOX Result: {}", response.gox_result);
+if let Some(emv) = response.emv_data {
+    // Acessar cryptogram
+    if let Some(cryptogram) = emv.get_tag(&[0x9F, 0x26]) {
+        println!("Cryptogram: {:02X?}", cryptogram);
+    }
+}
+
+// Finalizar chip EMV
+let cmd = AbecsCommand::FinishChip::new("00") // ARC: "00" = aprovado
+    .with_emv_data(issuer_emv_data);
+
+let response = pinpad.execute_typed(&cmd)?;
+println!("FCX Result: {}", response.fcx_result);
 
 // ═══════════════════════════════════════════════════════════
 // Tabelas
@@ -254,6 +308,63 @@ match pinpad.execute(&cmd) {
     Err(AbecsError::Timeout(msg)) => {
         println!("Timeout: {}", msg);
     }
+    Err(AbecsError::NakReceived(msg)) => {
+        println!("NAK recebido: {}", msg);
+    }
+    Err(e) => {
+        println!("Erro: {}", e);
+    }
+}
+```
+
+### Trabalhando com Dados EMV
+
+A biblioteca inclui um módulo completo para parsing de dados EMV (TLV):
+
+```rust
+use pinpad::EmvData;
+
+// Parse de dados EMV recebidos do cartão
+let response = pinpad.execute_typed(&get_card_cmd)?;
+if let Some(emv) = response.emv_data {
+    // Acessar tags específicas
+    if let Some(pan) = emv.get_tag(&[0x5A]) {
+        println!("PAN: {:02X?}", pan);
+    }
+    
+    if let Some(cryptogram) = emv.get_tag(&[0x9F, 0x26]) {
+        println!("Application Cryptogram: {:02X?}", cryptogram);
+    }
+    
+    // Iterar todas as tags
+    for (tag, value) in emv.tags() {
+        println!("Tag {:02X?}: {:02X?}", tag, value);
+    }
+}
+
+// Criar dados EMV para enviar ao Pinpad
+let mut emv = EmvData::new();
+emv.add_tag(&[0x8A], b"00"); // Authorization Response Code
+emv.add_tag(&[0x9F, 0x02], &[0x00, 0x00, 0x00, 0x00, 0x25, 0x00]); // Amount
+
+// Serializar para bytes TLV
+let tlv_bytes = emv.serialize();
+
+// Parse de bytes TLV
+let emv = EmvData::parse(&tlv_bytes)?;
+```
+
+**Tags EMV Comuns:**
+- `0x5A` - PAN (Primary Account Number)
+- `0x9F26` - Application Cryptogram
+- `0x9F27` - Cryptogram Information Data
+- `0x9F36` - Application Transaction Counter
+- `0x9F37` - Unpredictable Number
+- `0x95` - Terminal Verification Results
+- `0x9A` - Transaction Date
+- `0x9C` - Transaction Type
+
+Veja `src/emv.rs` para lista completa de tags e documentação.
     Err(AbecsError::NakReceived(msg)) => {
         println!("NAK recebido: {}", msg);
     }

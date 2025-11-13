@@ -81,10 +81,10 @@ cargo run --example 06_comando_personalizado
 ```
 
 #### [07_transacao_completa.rs](07_transacao_completa.rs) - Fluxo Completo de Transação
-Demonstra um fluxo completo de pagamento:
+Demonstra um fluxo completo de pagamento (tarja magnética):
 - Exibição de valor
 - Seleção de forma de pagamento
-- Leitura de cartão (simulado)
+- Leitura de cartão (GCX)
 - Captura de PIN
 - Processamento (simulado)
 - Exibição de resultado
@@ -92,6 +92,21 @@ Demonstra um fluxo completo de pagamento:
 
 ```bash
 cargo run --example 07_transacao_completa
+```
+
+#### [08_transacao_emv_completa.rs](08_transacao_emv_completa.rs) - Transação EMV Completa
+Demonstra um fluxo completo de transação com chip EMV:
+- Leitura de cartão chip (GCX)
+- Processamento EMV (GOX - Go On Chip)
+- Finalização EMV (FCX - Finish Chip)
+- Comunicação com processadora (simulado)
+- Parsing de dados EMV (TLV)
+- Cryptogram e dados EMV
+- ⚠️ Requer tabelas AID/CAPK carregadas
+- ⚠️ Exemplo educacional - não certificado EMV
+
+```bash
+cargo run --example 08_transacao_emv_completa
 ```
 
 ## 🚀 Como Executar
@@ -204,6 +219,11 @@ AbecsCommand::GetInfo::new("01")
 AbecsCommand::GetPin::new(msg, min, max, timeout, crypto, pan)
 AbecsCommand::GetData::new(msg, min, max, timeout)
 AbecsCommand::Menu::new(titulo, opcoes, timeout)
+AbecsCommand::GetCard::new(amount, date, time, timeout)
+
+// Transações EMV
+AbecsCommand::GoOnChip::new(app_type, amount, date, time, terminal_params)
+AbecsCommand::FinishChip::new(arc)
 
 // Tabelas
 AbecsCommand::TableLoadInit::new(table_id)

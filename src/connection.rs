@@ -256,104 +256,141 @@ impl PinpadConnection {
         // Timeout curto para leitura dos dados após receber SYN (2 segundos)
         let data_timeout = Duration::from_secs(2);
 
-        for attempt in 1..=3 {
-            // Configura timeout longo para aguardar o SYN
-            self.port.set_timeout(initial_timeout).map_err(|e| {
-                AbecsError::SerialError(format!("Erro ao configurar timeout: {}", e))
-            })?;
+        // Loop externo para tratar notificações NTM
+        loop {
+            for attempt in 1..=3 {
+                // Configura timeout longo para aguardar o SYN
+                self.port.set_timeout(initial_timeout).map_err(|e| {
+                    AbecsError::SerialError(format!("Erro ao configurar timeout: {}", e))
+                })?;
 
-            // Aguarda SYN
-            let mut buffer = [0u8; 1];
-            loop {
-                match self.port.read(&mut buffer) {
-                    Ok(_) if buffer[0] == SYN => break,
-                    Ok(_) => continue,
-                    Err(ref e) if e.kind() == std::io::ErrorKind::TimedOut => {
-                        return Err(AbecsError::Timeout(
-                            "Timeout aguardando resposta".to_string(),
-                        ));
-                    }
-                    Err(e) => {
-                        return Err(AbecsError::SerialError(format!("Erro ao ler: {}", e)));
-                    }
-                }
-            }
-
-            // Após receber SYN, configura timeout curto para leitura dos dados
-            self.port.set_timeout(data_timeout).map_err(|e| {
-                AbecsError::SerialError(format!("Erro ao configurar timeout: {}", e))
-            })?;
-
-            // Lê dados até ETB
-            let mut pkt_data = Vec::new();
-            loop {
-                match self.port.read(&mut buffer) {
-                    Ok(_) if buffer[0] == ETB => break,
-                    Ok(_) => {
-                        pkt_data.push(buffer[0]);
-                        if pkt_data.len() > 2049 {
-                            return Err(AbecsError::ProtocolError(
-                                "Pacote muito grande".to_string(),
+                // Aguarda SYN
+                let mut buffer = [0u8; 1];
+                loop {
+                    match self.port.read(&mut buffer) {
+                        Ok(_) if buffer[0] == SYN => break,
+                        Ok(_) => continue,
+                        Err(ref e) if e.kind() == std::io::ErrorKind::TimedOut => {
+                            return Err(AbecsError::Timeout(
+                                "Timeout aguardando resposta".to_string(),
                             ));
                         }
-                    }
-                    Err(ref e) if e.kind() == std::io::ErrorKind::TimedOut => {
-                        return Err(AbecsError::Timeout("Timeout lendo pacote".to_string()));
-                    }
-                    Err(e) => {
-                        return Err(AbecsError::SerialError(format!("Erro ao ler: {}", e)));
+                        Err(e) => {
+                            return Err(AbecsError::SerialError(format!("Erro ao ler: {}", e)));
+                        }
                     }
                 }
-            }
 
-            // Lê CRC
-            let mut crc_bytes = [0u8; 2];
-            self.port
-                .read_exact(&mut crc_bytes)
-                .map_err(|e| AbecsError::SerialError(format!("Erro ao ler CRC: {}", e)))?;
+                // Após receber SYN, configura timeout curto para leitura dos dados
+                self.port.set_timeout(data_timeout).map_err(|e| {
+                    AbecsError::SerialError(format!("Erro ao configurar timeout: {}", e))
+                })?;
 
-            let received_crc = ((crc_bytes[0] as u16) << 8) | (crc_bytes[1] as u16);
-
-            // Decodifica e valida CRC
-            let decoded_data = decode_data(&pkt_data).map_err(|e| AbecsError::ProtocolError(e))?;
-
-            let mut crc_check = decoded_data.clone();
-            crc_check.push(ETB);
-            let calculated_crc = calculate_crc16(&crc_check);
-
-            if calculated_crc == received_crc {
-                if self.verbose {
-                    println!("✓ CRC válido ({} bytes)", decoded_data.len());
-                    self.print_hex("  ", &decoded_data);
+                // Lê dados até ETB
+                let mut pkt_data = Vec::new();
+                loop {
+                    match self.port.read(&mut buffer) {
+                        Ok(_) if buffer[0] == ETB => break,
+                        Ok(_) => {
+                            pkt_data.push(buffer[0]);
+                            if pkt_data.len() > 2049 {
+                                return Err(AbecsError::ProtocolError(
+                                    "Pacote muito grande".to_string(),
+                                ));
+                            }
+                        }
+                        Err(ref e) if e.kind() == std::io::ErrorKind::TimedOut => {
+                            return Err(AbecsError::Timeout("Timeout lendo pacote".to_string()));
+                        }
+                        Err(e) => {
+                            return Err(AbecsError::SerialError(format!("Erro ao ler: {}", e)));
+                        }
+                    }
                 }
 
+                // Lê CRC
+                let mut crc_bytes = [0u8; 2];
                 self.port
-                    .set_timeout(Duration::from_millis(2000))
-                    .map_err(|e| {
-                        AbecsError::SerialError(format!("Erro ao restaurar timeout: {}", e))
-                    })?;
+                    .read_exact(&mut crc_bytes)
+                    .map_err(|e| AbecsError::SerialError(format!("Erro ao ler CRC: {}", e)))?;
 
-                return Ok(decoded_data);
-            } else {
-                if self.verbose {
-                    println!("✗ CRC inválido (tentativa {})", attempt);
-                }
+                let received_crc = ((crc_bytes[0] as u16) << 8) | (crc_bytes[1] as u16);
 
-                if attempt < 3 {
-                    self.port.write_all(&[NAK]).map_err(|e| {
-                        AbecsError::SerialError(format!("Erro ao enviar NAK: {}", e))
-                    })?;
+                // Decodifica e valida CRC
+                let decoded_data =
+                    decode_data(&pkt_data).map_err(|e| AbecsError::ProtocolError(e))?;
+
+                let mut crc_check = decoded_data.clone();
+                crc_check.push(ETB);
+                let calculated_crc = calculate_crc16(&crc_check);
+
+                if calculated_crc == received_crc {
+                    if self.verbose {
+                        println!("✓ CRC válido ({} bytes)", decoded_data.len());
+                        self.print_hex("  ", &decoded_data);
+                    }
+
+                    // Verifica se é uma notificação NTM
+                    if decoded_data.len() >= 3 {
+                        let rsp_id = String::from_utf8_lossy(&decoded_data[0..3]);
+                        if rsp_id == "NTM" {
+                            // É uma notificação! Extrai a mensagem e continua aguardando
+                            if self.verbose {
+                                println!("📢 Notificação NTM recebida");
+                            }
+
+                            // Extrai status e mensagem da notificação
+                            if decoded_data.len() >= 6 {
+                                let status = String::from_utf8_lossy(&decoded_data[3..6]);
+                                if self.verbose {
+                                    println!("   Status: {}", status);
+                                }
+
+                                // Se houver mais dados, é a mensagem da notificação
+                                if decoded_data.len() > 6 {
+                                    let message = String::from_utf8_lossy(&decoded_data[6..])
+                                        .trim()
+                                        .to_string();
+                                    if self.verbose {
+                                        println!("   Mensagem: {}", message);
+                                    }
+                                }
+                            }
+
+                            if self.verbose {
+                                println!("← Aguardando resposta do comando...");
+                            }
+
+                            // Continua o loop externo para aguardar a próxima mensagem
+                            break;
+                        }
+                    }
+
+                    // Não é NTM, é a resposta real do comando
+                    self.port
+                        .set_timeout(Duration::from_millis(2000))
+                        .map_err(|e| {
+                            AbecsError::SerialError(format!("Erro ao restaurar timeout: {}", e))
+                        })?;
+
+                    return Ok(decoded_data);
                 } else {
-                    return Err(AbecsError::ProtocolError(
-                        "CRC inválido após 3 tentativas".to_string(),
-                    ));
+                    if self.verbose {
+                        println!("✗ CRC inválido (tentativa {})", attempt);
+                    }
+
+                    if attempt < 3 {
+                        self.port.write_all(&[NAK]).map_err(|e| {
+                            AbecsError::SerialError(format!("Erro ao enviar NAK: {}", e))
+                        })?;
+                    } else {
+                        return Err(AbecsError::ProtocolError(
+                            "CRC inválido após 3 tentativas".to_string(),
+                        ));
+                    }
                 }
             }
         }
-
-        Err(AbecsError::ProtocolError(
-            "Falha após 3 tentativas".to_string(),
-        ))
     }
 
     /// Imprime bytes em hexadecimal (debug)

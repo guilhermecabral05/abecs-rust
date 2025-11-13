@@ -15,7 +15,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("═══════════════════════════════════════════════════════\n");
 
     // Conectar ao Pinpad
-    let port_name = "/dev/ttyACM1";
+    let port_name = "/dev/ttyACM0";
     println!("🔌 Conectando em {}...", port_name);
     let mut pinpad = PinpadConnection::open(port_name)?;
     // pinpad.set_verbose(true); // Descomente para debug

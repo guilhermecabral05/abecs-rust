@@ -24,7 +24,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("   Em produção, configure as chaves criptográficas\n");
 
     // Conectar ao Pinpad
-    let port_name = "/dev/ttyACM1";
+    let port_name = "/dev/ttyACM0";
     println!("🔌 Conectando em {}...", port_name);
     let mut pinpad = PinpadConnection::open(port_name)?;
     println!("✅ Conectado!\n");
