@@ -81,6 +81,80 @@ impl std::fmt::Display for CardType {
 // Estruturas de Dados de Cartão
 // ═══════════════════════════════════════════════════════════════════════════
 
+/// Método de pagamento identificado pelo código de serviço
+///
+/// ⚠️ **LIMITAÇÃO IMPORTANTE**: A detecção por service code é **não confiável** e apenas
+/// uma heurística aproximada. O service code ISO/IEC 7813 não foi projetado para
+/// distinguir crédito de débito.
+///
+/// **Fonte confiável**: Use a **mensagem NTM** do Pinpad durante o GCX, que mostra
+/// o nome da aplicação selecionada (ex: "SELECIONADO: CREDITO"). Esta informação
+/// vem da tabela AID configurada no Pinpad e é a fonte autorizada.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PaymentMethod {
+    /// Crédito (estimativa - pode estar incorreto)
+    Credit,
+    /// Débito (estimativa - pode estar incorreto)
+    Debit,
+    /// Desconhecido ou não identificado
+    Unknown,
+}
+
+impl PaymentMethod {
+    /// Identifica o método de pagamento pelo código de serviço (service code)
+    ///
+    /// ⚠️ **IMPORTANTE**: Esta é apenas uma **heurística aproximada** e **não é confiável**.
+    /// O service code ISO/IEC 7813 não foi projetado para distinguir crédito de débito.
+    ///
+    /// **Fonte confiável**: A informação correta vem da **mensagem NTM** do Pinpad durante
+    /// o GCX, que mostra o nome da aplicação selecionada (ex: "CREDITO", "DEBITO").
+    /// Essa informação vem da tabela AID configurada no Pinpad.
+    ///
+    /// **Service Code (ISO/IEC 7813)**:
+    /// - 1º dígito: Interchange e tecnologia (1=intl chip, 2=intl chip, 5=natl chip, 6=natl chip)
+    /// - 2º dígito: Procedimento de autorização (0=normal, 2=contact issuer, 4=contact except region)
+    /// - 3º dígito: Serviços permitidos e restrições PIN
+    ///
+    /// Exemplo: Service code "201" pode ser CRÉDITO ou DÉBITO - o código não distingue.
+    ///
+    /// Use este método apenas como **estimativa aproximada** quando a mensagem NTM
+    /// não estiver disponível.
+    pub fn from_service_code(service_code: &str) -> Self {
+        if service_code.len() < 3 {
+            return PaymentMethod::Unknown;
+        }
+
+        // O service code ISO/IEC 7813 NÃO indica crédito vs débito de forma confiável.
+        // Esta é apenas uma heurística muito aproximada baseada em padrões observados.
+        let third_digit = service_code.chars().nth(2).unwrap();
+
+        // Heurística APROXIMADA baseada no 3º dígito (serviços permitidos):
+        // - 0, 2, 5, 7: Normalmente sem PIN ou PIN opcional → mais comum em crédito
+        // - 1, 3, 4, 6: Normalmente requer PIN → mais comum em débito
+        // Mas isso não é garantido! Use a mensagem NTM como fonte real.
+        match third_digit {
+            '0' | '2' | '5' | '7' => PaymentMethod::Credit,
+            '1' | '3' | '4' | '6' => PaymentMethod::Debit,
+            _ => PaymentMethod::Unknown,
+        }
+    }
+
+    /// Retorna o nome do método de pagamento
+    pub fn name(&self) -> &str {
+        match self {
+            PaymentMethod::Credit => "Crédito",
+            PaymentMethod::Debit => "Débito",
+            PaymentMethod::Unknown => "Desconhecido",
+        }
+    }
+}
+
+impl std::fmt::Display for PaymentMethod {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.name())
+    }
+}
+
 /// Dados parseados da Track 1 (Trilha 1) do cartão magnético
 ///
 /// Formato ISO/IEC 7813 Track 1 (IATA):
@@ -278,6 +352,36 @@ impl Track1Data {
             }
             false
         })
+    }
+
+    /// Retorna o método de pagamento detectado pelo código de serviço
+    ///
+    /// ⚠️ **AVISO**: Este método retorna apenas uma **estimativa aproximada** e pode estar
+    /// **incorreto**. O service code ISO não foi projetado para distinguir crédito de débito.
+    ///
+    /// **Fonte confiável**: A informação correta aparece na **mensagem NTM** do Pinpad durante
+    /// o comando GCX (ex: "SELECIONADO: CREDITO" ou "SELECIONADO: DEBITO").
+    ///
+    /// **Exemplo de inconsistência**:
+    /// - Service code "201" → Este método retorna `Débito`
+    /// - Mensagem NTM: "CREDITO" → **Esta é a informação correta!**
+    ///
+    /// Use este método apenas quando a mensagem NTM não estiver disponível.
+    ///
+    /// # Exemplos
+    ///
+    /// ```rust,no_run
+    /// use pinpad::Track1Data;
+    ///
+    /// let track1 = Track1Data::parse("6396649900138069D3203206");
+    /// // ⚠️ Pode estar incorreto! Prefira usar a mensagem NTM do Pinpad
+    /// println!("Estimativa: {}", track1.payment_method());
+    /// ```
+    pub fn payment_method(&self) -> PaymentMethod {
+        self.service_code
+            .as_ref()
+            .map(|s| PaymentMethod::from_service_code(s))
+            .unwrap_or(PaymentMethod::Unknown)
     }
 }
 

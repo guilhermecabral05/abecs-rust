@@ -18,10 +18,11 @@ pub use error::AbecsError;
 pub use response::AbecsResponse;
 pub use serialize::{AbecsDeserialize, AbecsSerialize, AbecsTypedCommand};
 
-// Re-exporta as respostas
+// Re-exporta as respostas e estruturas
 pub use commands::{
     CardType, EmptyResponse, FinishChipResponse, GetCardResponse, GetDataResponse, GetInfoResponse,
-    GetKeyResponse, GetPinResponse, GetTracksResponse, GoOnChipResponse, MenuResponse, Track1Data,
+    GetKeyResponse, GetPinResponse, GetTracksResponse, GoOnChipResponse, MenuResponse,
+    PaymentMethod, Track1Data,
 };
 
 /// Tipo Result padrão da biblioteca
