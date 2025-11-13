@@ -52,7 +52,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let card_result = conn.execute_typed(&card_cmd)?;
     println!("✅ Cartão detectado!");
-    println!("📇 Tipo: {}", card_result.card_type);
+    println!("📇 Tipo: {} (código {})", card_result.card_type, card_result.card_type.to_code());
+    
+    if let Some(ref pan) = card_result.pan {
+        println!("💳 PAN: {}", pan);
+    }
 
     // 4. GTK - Obtém trilhas completas
     println!("\n4️⃣  Obtendo trilhas completas do cartão...");
@@ -62,28 +66,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("✅ Trilhas obtidas!");
 
     // Mostra trilhas obtidas
-    if let Some(ref pan) = tracks_result.pan {
-        println!("\n💳 PAN: {} bytes", pan.len());
-        println!("   HEX: {}", hex_format(pan));
-        println!("   ASCII: {}", ascii_format(pan));
+    if let Some(pan_str) = tracks_result.pan_as_string() {
+        println!("\n💳 PAN: {}", pan_str);
     }
 
-    if let Some(ref t1) = tracks_result.track1 {
-        println!("\n🎫 Trilha 1: {} bytes", t1.len());
-        println!("   HEX: {}", hex_format(t1));
-        println!("   ASCII: {}", ascii_format(t1));
+    if let Some(t1_str) = tracks_result.track1_as_string() {
+        println!("\n🎫 Trilha 1: {}", t1_str);
     }
 
-    if let Some(ref t2) = tracks_result.track2 {
-        println!("\n🎫 Trilha 2: {} bytes", t2.len());
-        println!("   HEX: {}", hex_format(t2));
-        println!("   ASCII: {}", ascii_format(t2));
+    if let Some(t2_str) = tracks_result.track2_as_string() {
+        println!("\n🎫 Trilha 2: {}", t2_str);
     }
 
-    if let Some(ref t3) = tracks_result.track3 {
-        println!("\n🎫 Trilha 3: {} bytes", t3.len());
-        println!("   HEX: {}", hex_format(t3));
-        println!("   ASCII: {}", ascii_format(t3));
+    if let Some(t3_str) = tracks_result.track3_as_string() {
+        println!("\n🎫 Trilha 3: {}", t3_str);
+    }
+
+    // Mostra formato hexadecimal se necessário (para debug)
+    if tracks_result.is_encrypted() {
+        println!("\n🔐 Dados criptografados detectados!");
+        
+        if let Some(ref pan) = tracks_result.pan {
+            println!("   PAN HEX: {}", hex_format(pan));
+        }
+        if let Some(ref ksn) = tracks_result.pan_ksn {
+            println!("   PAN KSN: {}", hex_format(ksn));
+        }
     }
 
     // 5. CLO - Fecha sessão
@@ -104,16 +112,4 @@ fn hex_format(data: &[u8]) -> String {
         .map(|b| format!("{:02X}", b))
         .collect::<Vec<_>>()
         .join(" ")
-}
-
-fn ascii_format(data: &[u8]) -> String {
-    data.iter()
-        .map(|&b| {
-            if b >= 0x20 && b <= 0x7E {
-                b as char
-            } else {
-                '.'
-            }
-        })
-        .collect()
 }

@@ -134,14 +134,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let card_response = match pinpad.execute_typed(&cmd) {
         Ok(response) => {
-            let tipo_cartao = match response.card_type.as_str() {
-                "00" => "Magnético",
-                "03" => "ICC EMV (Chip)",
-                "05" => "CTLS (Aproximação - Tarja)",
-                "06" => "CTLS EMV (Aproximação - Chip)",
-                _ => "Desconhecido",
-            };
-            println!("✅ Cartão detectado: {}", tipo_cartao);
+            println!("✅ Cartão detectado: {}", response.card_type);
             
             if let Some(ref pan_read) = response.pan {
                 let pan_mask = if pan_read.len() >= 4 {

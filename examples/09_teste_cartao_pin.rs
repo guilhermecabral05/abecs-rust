@@ -75,14 +75,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("───────────────────────────────────────────────────────");
 
             // Tipo de cartão
-            let tipo = match response.card_type.as_str() {
-                "00" => "Magnético (Tarja)",
-                "03" => "ICC EMV (Chip Inserido)",
-                "05" => "CTLS (Aproximação - Tarja)",
-                "06" => "CTLS EMV (Aproximação - Chip)",
-                _ => "Desconhecido",
-            };
-            println!("Tipo: {} (código: {})", tipo, response.card_type);
+            println!("Tipo: {} (código {})", response.card_type, response.card_type.to_code());
 
             // PAN
             if let Some(ref pan) = response.pan {
@@ -197,7 +190,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("═══════════════════════════════════════════════════════\n");
 
     println!("📋 Resumo:");
-    println!("   • Tipo de Cartão: {}", card_response.card_type);
+    println!("   • Tipo de Cartão: {} ({})", card_response.card_type, card_response.card_type.to_code());
     if let Some(pan) = card_response.pan {
         println!("   • PAN: {}", mask_pan(&pan));
     }

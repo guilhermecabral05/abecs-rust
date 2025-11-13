@@ -96,15 +96,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let card_response = match pinpad.execute_typed(&cmd) {
         Ok(response) => {
-            let tipo_cartao = match response.card_type.as_str() {
-                "00" => "Magnético (Tarja)",
-                "03" => "ICC EMV (Chip Inserido)",
-                "05" => "CTLS (Aproximação - Tarja)",
-                "06" => "CTLS EMV (Aproximação - Chip)",
-                _ => "Desconhecido",
-            };
-            println!("✅ Cartão detectado: {}", tipo_cartao);
-            println!("   Tipo: {}", response.card_type);
+            println!("✅ Cartão detectado: {}", response.card_type);
+            println!(
+                "   Tipo: {} (código {})",
+                response.card_type,
+                response.card_type.to_code()
+            );
 
             if let Some(ref pan) = response.pan {
                 let pan_mask = mask_pan(pan);
@@ -135,7 +132,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     // Determinar se é transação EMV (chip)
-    let is_emv = card_response.card_type == "03" || card_response.card_type == "06";
+    let is_emv = card_response.card_type.is_emv();
 
     if !is_emv {
         println!("⚠️  Cartão não é EMV (chip)");
@@ -354,7 +351,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "NEGADA"
         }
     );
-    println!("   Tipo Cartão: {}", card_response.card_type);
+    println!(
+        "   Tipo Cartão: {} ({})",
+        card_response.card_type,
+        card_response.card_type.to_code()
+    );
     println!("   Valor: R$ {},{:02}", reais, centavos);
     if transaction_approved {
         println!("   Código: {}", codigo_autorizacao);

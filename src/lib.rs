@@ -20,8 +20,8 @@ pub use serialize::{AbecsDeserialize, AbecsSerialize, AbecsTypedCommand};
 
 // Re-exporta as respostas
 pub use commands::{
-    EmptyResponse, FinishChipResponse, GetCardResponse, GetDataResponse, GetInfoResponse,
-    GetKeyResponse, GetPinResponse, GetTracksResponse, GoOnChipResponse, MenuResponse,
+    CardType, EmptyResponse, FinishChipResponse, GetCardResponse, GetDataResponse, GetInfoResponse,
+    GetKeyResponse, GetPinResponse, GetTracksResponse, GoOnChipResponse, MenuResponse, Track1Data,
 };
 
 /// Tipo Result padrão da biblioteca

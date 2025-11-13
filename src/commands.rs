@@ -3,6 +3,301 @@ use crate::response::AbecsResponse;
 use crate::serialize::{AbecsDeserialize, AbecsSerialize, AbecsTypedCommand};
 
 // ═══════════════════════════════════════════════════════════════════════════
+// Enums
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Tipo de cartão detectado pelo Pinpad
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CardType {
+    /// Cartão magnético (código "00")
+    Magnetic,
+    /// Cartão com chip ICC EMV (código "03")
+    IccEmv,
+    /// Cartão contactless magnético (código "05")
+    CtlsMagnetic,
+    /// Cartão contactless EMV (código "06")
+    CtlsEmv,
+    /// Tipo desconhecido ou não mapeado
+    Unknown(String),
+}
+
+impl CardType {
+    /// Cria um CardType a partir do código ABECS
+    pub fn from_code(code: &str) -> Self {
+        match code {
+            "00" => CardType::Magnetic,
+            "03" => CardType::IccEmv,
+            "05" => CardType::CtlsMagnetic,
+            "06" => CardType::CtlsEmv,
+            _ => CardType::Unknown(code.to_string()),
+        }
+    }
+
+    /// Retorna o código ABECS do tipo de cartão
+    pub fn to_code(&self) -> String {
+        match self {
+            CardType::Magnetic => "00".to_string(),
+            CardType::IccEmv => "03".to_string(),
+            CardType::CtlsMagnetic => "05".to_string(),
+            CardType::CtlsEmv => "06".to_string(),
+            CardType::Unknown(code) => code.clone(),
+        }
+    }
+
+    /// Retorna uma descrição legível do tipo de cartão
+    pub fn description(&self) -> &str {
+        match self {
+            CardType::Magnetic => "Cartão Magnético",
+            CardType::IccEmv => "Chip ICC EMV",
+            CardType::CtlsMagnetic => "Contactless Magnético",
+            CardType::CtlsEmv => "Contactless EMV",
+            CardType::Unknown(_) => "Tipo Desconhecido",
+        }
+    }
+
+    /// Verifica se o cartão é contactless (NFC)
+    pub fn is_contactless(&self) -> bool {
+        matches!(self, CardType::CtlsMagnetic | CardType::CtlsEmv)
+    }
+
+    /// Verifica se o cartão é EMV (chip ou contactless)
+    pub fn is_emv(&self) -> bool {
+        matches!(self, CardType::IccEmv | CardType::CtlsEmv)
+    }
+
+    /// Verifica se o cartão usa apenas tarja magnética
+    pub fn is_magnetic_only(&self) -> bool {
+        matches!(self, CardType::Magnetic | CardType::CtlsMagnetic)
+    }
+}
+
+impl std::fmt::Display for CardType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.description())
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Estruturas de Dados de Cartão
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Dados parseados da Track 1 (Trilha 1) do cartão magnético
+///
+/// Formato ISO/IEC 7813 Track 1 (IATA):
+/// - Início: `%` ou `B` (em BCD)
+/// - PAN (Primary Account Number): até 19 dígitos
+/// - Separador: `^`
+/// - Nome do titular: até 26 caracteres (opcional)
+/// - Separador: `^`
+/// - Data de validade: YYMM (4 dígitos)
+/// - Código de serviço: 3 dígitos
+/// - Dados discricionários: informações adicionais do banco
+/// - Fim: `?`
+///
+/// Exemplo em BCD: `6396649900138069D32032060000007250325F`
+/// - `6396649900138069` = PAN
+/// - `D` = Separador (em BCD, `D` = `^` ou `=`)
+/// - `3203` = Validade (03/2032)
+/// - `206` = Código de serviço
+/// - `0000007250325F` = Dados discricionários
+#[derive(Debug, Clone)]
+pub struct Track1Data {
+    /// Dados brutos da trilha em formato string
+    pub raw: String,
+
+    /// PAN (Primary Account Number) - número do cartão
+    pub pan: Option<String>,
+
+    /// Nome do titular do cartão (se disponível)
+    pub cardholder_name: Option<String>,
+
+    /// Data de validade no formato YYMM (ex: "3203" = março de 2032)
+    pub expiry_date: Option<String>,
+
+    /// Código de serviço (3 dígitos)
+    pub service_code: Option<String>,
+
+    /// Dados discricionários (informações adicionais do banco)
+    pub discretionary_data: Option<String>,
+}
+
+impl Track1Data {
+    /// Parseia uma string da Track 1 em formato BCD
+    ///
+    /// # Exemplos
+    ///
+    /// ```rust,no_run
+    /// use pinpad::Track1Data;
+    ///
+    /// let track1_str = "6396649900138069D32032060000007250325F";
+    /// let track1 = Track1Data::parse(track1_str);
+    ///
+    /// println!("PAN: {:?}", track1.pan);
+    /// println!("Validade: {:?}", track1.expiry_date);
+    /// ```
+    pub fn parse(data: &str) -> Self {
+        let raw = data.to_string();
+
+        // Remove caractere inicial se for '%' ou 'B'
+        let data = data.trim_start_matches('%').trim_start_matches('B');
+
+        // Remove caractere final se for '?'
+        let data = data.trim_end_matches('?');
+
+        // Em BCD, o separador pode ser 'D' ou '^'
+        // Tenta encontrar o primeiro separador
+        let parts: Vec<&str> = if data.contains('D') {
+            data.splitn(2, 'D').collect()
+        } else if data.contains('^') {
+            data.splitn(2, '^').collect()
+        } else if data.contains('=') {
+            data.splitn(2, '=').collect()
+        } else {
+            // Sem separador encontrado, trata tudo como PAN
+            return Self {
+                raw,
+                pan: Some(data.to_string()),
+                cardholder_name: None,
+                expiry_date: None,
+                service_code: None,
+                discretionary_data: None,
+            };
+        };
+
+        let pan = if !parts.is_empty() {
+            Some(parts[0].to_string())
+        } else {
+            None
+        };
+
+        // Parse da parte após o PAN
+        let mut cardholder_name = None;
+        let mut expiry_date = None;
+        let mut service_code = None;
+        let mut discretionary_data = None;
+
+        if parts.len() > 1 {
+            let remainder = parts[1];
+
+            // Verifica se tem nome do titular (se tiver outro separador '^')
+            if remainder.contains('^') {
+                let name_parts: Vec<&str> = remainder.splitn(2, '^').collect();
+                cardholder_name = Some(name_parts[0].to_string());
+
+                if name_parts.len() > 1 {
+                    let data_part = name_parts[1];
+
+                    // Formato esperado: YYMMCCCDDDDDD...
+                    // YYMM = 4 dígitos (validade)
+                    // CCC = 3 dígitos (service code)
+                    // DDDDDD... = dados discricionários
+
+                    if data_part.len() >= 4 {
+                        expiry_date = Some(data_part[0..4].to_string());
+                    }
+
+                    if data_part.len() >= 7 {
+                        service_code = Some(data_part[4..7].to_string());
+                    }
+
+                    if data_part.len() > 7 {
+                        discretionary_data = Some(data_part[7..].to_string());
+                    }
+                }
+            } else {
+                // Sem nome, vai direto para validade
+                if remainder.len() >= 4 {
+                    expiry_date = Some(remainder[0..4].to_string());
+                }
+
+                if remainder.len() >= 7 {
+                    service_code = Some(remainder[4..7].to_string());
+                }
+
+                if remainder.len() > 7 {
+                    discretionary_data = Some(remainder[7..].to_string());
+                }
+            }
+        }
+
+        Self {
+            raw,
+            pan,
+            cardholder_name,
+            expiry_date,
+            service_code,
+            discretionary_data,
+        }
+    }
+
+    /// Retorna a data de validade em formato legível (MM/YYYY)
+    ///
+    /// Exemplo: "3203" → "03/2032"
+    pub fn expiry_date_formatted(&self) -> Option<String> {
+        self.expiry_date.as_ref().and_then(|date| {
+            if date.len() == 4 {
+                let yy = &date[0..2];
+                let mm = &date[2..4];
+                // Assume que anos 00-49 são 2000-2049, 50-99 são 1950-1999
+                let year = if yy.parse::<u32>().ok()? < 50 {
+                    format!("20{}", yy)
+                } else {
+                    format!("19{}", yy)
+                };
+                Some(format!("{}/{}", mm, year))
+            } else {
+                None
+            }
+        })
+    }
+
+    /// Verifica se o cartão está expirado com base na data fornecida
+    ///
+    /// # Exemplos
+    ///
+    /// ```rust,no_run
+    /// use pinpad::Track1Data;
+    ///
+    /// let track1 = Track1Data::parse("6396649900138069D3203206");
+    /// // Para data atual (2025/11)
+    /// assert!(!track1.is_expired(2025, 11));
+    /// ```
+    pub fn is_expired(&self, current_year: u32, current_month: u32) -> bool {
+        self.expiry_date.as_ref().map_or(false, |date| {
+            if date.len() == 4 {
+                if let (Ok(yy), Ok(mm)) = (date[0..2].parse::<u32>(), date[2..4].parse::<u32>()) {
+                    let year = if yy < 50 { 2000 + yy } else { 1900 + yy };
+
+                    if year < current_year {
+                        return true;
+                    }
+                    if year == current_year && mm < current_month {
+                        return true;
+                    }
+                }
+            }
+            false
+        })
+    }
+}
+
+impl std::fmt::Display for Track1Data {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Track1 [")?;
+        if let Some(ref pan) = self.pan {
+            write!(f, "PAN: {}", pan)?;
+        }
+        if let Some(ref name) = self.cardholder_name {
+            write!(f, ", Nome: {}", name)?;
+        }
+        if let Some(ref exp) = self.expiry_date {
+            write!(f, ", Validade: {}", exp)?;
+        }
+        write!(f, "]")
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // Respostas
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -31,14 +326,22 @@ pub struct GetDataResponse {
 /// Resposta do comando GetCard (GCX)
 #[derive(Debug, Clone)]
 pub struct GetCardResponse {
-    pub card_type: String, // "00"=Magnético, "03"=ICC EMV, "05"=CTLS tarja, "06"=CTLS EMV
-    pub pan: Option<String>, // PAN do cartão (se disponível)
-    pub track1: Option<String>, // Trilha 1 (incompleta)
-    pub track2: Option<String>, // Trilha 2 (incompleta)
-    pub track3: Option<String>, // Trilha 3 (incompleta)
-    pub emv_data: Option<crate::emv::EmvData>, // Dados EMV em formato TLV
-    pub icc_status: Option<String>, // Status ICC (código de 2 dígitos)
-    pub aid_table_info: Option<Vec<u8>>, // Informações da tabela AID
+    /// Tipo de cartão detectado
+    pub card_type: CardType,
+    /// PAN do cartão (número do cartão em formato string, ex: "6396649900138069")
+    pub pan: Option<String>,
+    /// Trilha 1 (incompleta, pode estar mascarada)
+    pub track1: Option<String>,
+    /// Trilha 2 (incompleta, pode estar mascarada)
+    pub track2: Option<String>,
+    /// Trilha 3 (incompleta, pode estar mascarada)
+    pub track3: Option<String>,
+    /// Dados EMV em formato TLV (para cartões EMV)
+    pub emv_data: Option<crate::emv::EmvData>,
+    /// Status ICC (código de 2 dígitos)
+    pub icc_status: Option<String>,
+    /// Informações da tabela AID
+    pub aid_table_info: Option<Vec<u8>>,
 }
 
 /// Resposta do comando Menu
@@ -53,15 +356,166 @@ pub struct MenuResponse {
 /// Resposta do comando GetTracks (GTK)
 #[derive(Debug, Clone)]
 pub struct GetTracksResponse {
-    pub pan: Option<Vec<u8>>,        // PAN (em claro ou criptografado)
-    pub track1: Option<Vec<u8>>,     // Trilha 1 (em claro ou criptografada)
-    pub track2: Option<Vec<u8>>,     // Trilha 2 (em claro ou criptografada)
-    pub track3: Option<Vec<u8>>,     // Trilha 3 (em claro ou criptografada)
-    pub track1_ksn: Option<Vec<u8>>, // KSN da trilha 1 (se DUKPT)
-    pub track2_ksn: Option<Vec<u8>>, // KSN da trilha 2 (se DUKPT)
-    pub track3_ksn: Option<Vec<u8>>, // KSN da trilha 3 (se DUKPT)
-    pub pan_ksn: Option<Vec<u8>>,    // KSN do PAN (se DUKPT)
-    pub krand_enc: Option<Vec<u8>>,  // KRAND criptografado (se RSA)
+    /// PAN (Primary Account Number) do cartão
+    /// - Em claro: bytes em formato BCD (Binary Coded Decimal)
+    ///   - Cada byte representa 2 dígitos hexadecimais
+    ///   - Ex: [0x63, 0x96, 0x64] = "639664"
+    ///   - Use `pan_as_string()` para converter automaticamente
+    /// - Criptografado: bytes binários conforme método escolhido (DUKPT/MK)
+    pub pan: Option<Vec<u8>>,
+
+    /// Trilha 1 do cartão (formato ISO/IEC 7813)
+    /// - Em claro: bytes em formato BCD
+    ///   - Use `track1_as_string()` para converter automaticamente
+    /// - Criptografada: bytes binários conforme método escolhido
+    pub track1: Option<Vec<u8>>,
+
+    /// Trilha 2 do cartão (formato ISO/IEC 7813)
+    /// - Em claro: bytes em formato BCD
+    ///   - Use `track2_as_string()` para converter automaticamente
+    /// - Criptografada: bytes binários conforme método escolhido
+    pub track2: Option<Vec<u8>>,
+
+    /// Trilha 3 do cartão (formato ISO/IEC 7813)
+    /// - Em claro: bytes em formato BCD
+    ///   - Use `track3_as_string()` para converter automaticamente
+    /// - Criptografada: bytes binários conforme método escolhido
+    pub track3: Option<Vec<u8>>,
+
+    /// KSN (Key Serial Number) da trilha 1 (apenas para DUKPT)
+    pub track1_ksn: Option<Vec<u8>>,
+
+    /// KSN da trilha 2 (apenas para DUKPT)
+    pub track2_ksn: Option<Vec<u8>>,
+
+    /// KSN da trilha 3 (apenas para DUKPT)
+    pub track3_ksn: Option<Vec<u8>>,
+
+    /// KSN do PAN (apenas para DUKPT)
+    pub pan_ksn: Option<Vec<u8>>,
+
+    /// KRAND criptografado (apenas para RSA)
+    pub krand_enc: Option<Vec<u8>>,
+}
+
+impl GetTracksResponse {
+    /// Converte bytes BCD (Binary Coded Decimal) para String
+    ///
+    /// No formato BCD, cada byte representa 2 dígitos hexadecimais.
+    /// Ex: 0x63 0x96 0x64 → "639664"
+    fn bcd_to_string(bytes: &[u8]) -> String {
+        bytes
+            .iter()
+            .flat_map(|&b| {
+                let high = (b >> 4) & 0x0F;
+                let low = b & 0x0F;
+                [
+                    if high <= 9 {
+                        char::from_digit(high as u32, 10).unwrap()
+                    } else {
+                        char::from(high + 0x37)
+                    },
+                    if low <= 9 {
+                        char::from_digit(low as u32, 10).unwrap()
+                    } else {
+                        char::from(low + 0x37)
+                    },
+                ]
+            })
+            .collect()
+    }
+
+    /// Converte o PAN de bytes para String
+    ///
+    /// Tenta detectar automaticamente se os bytes estão em:
+    /// - BCD (Binary Coded Decimal): cada byte = 2 dígitos
+    /// - ASCII: bytes representam caracteres diretamente
+    pub fn pan_as_string(&self) -> Option<String> {
+        self.pan.as_ref().map(|bytes| {
+            // Verifica se parece ser BCD (bytes não imprimíveis ou > 0x7F)
+            let is_bcd = bytes.iter().any(|&b| b > 0x7F || (b < 0x20 && b != 0x00));
+
+            if is_bcd {
+                Self::bcd_to_string(bytes)
+            } else {
+                String::from_utf8_lossy(bytes).to_string()
+            }
+        })
+    }
+
+    /// Converte a trilha 1 de bytes para String
+    pub fn track1_as_string(&self) -> Option<String> {
+        self.track1.as_ref().map(|bytes| {
+            let is_bcd = bytes.iter().any(|&b| b > 0x7F || (b < 0x20 && b != 0x00));
+
+            if is_bcd {
+                Self::bcd_to_string(bytes)
+            } else {
+                String::from_utf8_lossy(bytes).to_string()
+            }
+        })
+    }
+
+    /// Converte a trilha 2 de bytes para String
+    pub fn track2_as_string(&self) -> Option<String> {
+        self.track2.as_ref().map(|bytes| {
+            let is_bcd = bytes.iter().any(|&b| b > 0x7F || (b < 0x20 && b != 0x00));
+
+            if is_bcd {
+                Self::bcd_to_string(bytes)
+            } else {
+                String::from_utf8_lossy(bytes).to_string()
+            }
+        })
+    }
+
+    /// Converte a trilha 3 de bytes para String
+    pub fn track3_as_string(&self) -> Option<String> {
+        self.track3.as_ref().map(|bytes| {
+            let is_bcd = bytes.iter().any(|&b| b > 0x7F || (b < 0x20 && b != 0x00));
+
+            if is_bcd {
+                Self::bcd_to_string(bytes)
+            } else {
+                String::from_utf8_lossy(bytes).to_string()
+            }
+        })
+    }
+
+    /// Verifica se os dados estão criptografados (presença de KSNs)
+    pub fn is_encrypted(&self) -> bool {
+        self.pan_ksn.is_some()
+            || self.track1_ksn.is_some()
+            || self.track2_ksn.is_some()
+            || self.track3_ksn.is_some()
+    }
+
+    /// Parseia a Track 1 em uma estrutura Track1Data
+    ///
+    /// Retorna None se a trilha não estiver disponível ou estiver criptografada.
+    ///
+    /// # Exemplos
+    ///
+    /// ```rust,no_run
+    /// # use pinpad::AbecsCommand::GetTracks;
+    /// # use pinpad::PinpadConnection;
+    /// # let mut conn = PinpadConnection::open("/dev/ttyACM0").unwrap();
+    /// let tracks_cmd = GetTracks::new_plain();
+    /// let tracks_result = conn.execute_typed(&tracks_cmd).unwrap();
+    ///
+    /// if let Some(track1_data) = tracks_result.parse_track1() {
+    ///     println!("PAN: {:?}", track1_data.pan);
+    ///     println!("Validade: {:?}", track1_data.expiry_date_formatted());
+    /// }
+    /// ```
+    pub fn parse_track1(&self) -> Option<Track1Data> {
+        // Não parseia se estiver criptografado
+        if self.is_encrypted() {
+            return None;
+        }
+
+        self.track1_as_string().map(|s| Track1Data::parse(&s))
+    }
 }
 
 /// Resposta do comando GetKey
@@ -1058,7 +1512,7 @@ impl AbecsDeserialize for GetCardResponse {
         // A resposta de GCX vem em formato TLV com múltiplos parâmetros
         let block = response.get_block(0).ok_or("Bloco não encontrado")?;
 
-        let mut card_type = String::new();
+        let mut card_type_code = String::new();
         let mut pan = None;
         let mut track1 = None;
         let mut track2 = None;
@@ -1083,10 +1537,10 @@ impl AbecsDeserialize for GetCardResponse {
             match param_id {
                 0x804F => {
                     // PP_CARDTYPE
-                    card_type = String::from_utf8_lossy(value).to_string();
+                    card_type_code = String::from_utf8_lossy(value).to_string();
                 }
                 0x8036 => {
-                    // PP_PAN
+                    // PP_PAN - número do cartão já vem como string ASCII
                     pan = Some(String::from_utf8_lossy(value).to_string());
                 }
                 0x8037 => {
@@ -1118,6 +1572,9 @@ impl AbecsDeserialize for GetCardResponse {
 
             pos += param_len as usize;
         }
+
+        // Converte o código string para o enum CardType
+        let card_type = CardType::from_code(&card_type_code);
 
         Ok(GetCardResponse {
             card_type,
